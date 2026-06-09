@@ -1,0 +1,13 @@
+id: bgp-path-vector
+type: lesson
+title: "Path-Vector Routing: How BGP Sees the Internet"
+summary: "Why BGP is a path-vector protocol - carrying the whole AS_PATH for loop prevention, policy, and internet-scale routing."
+path: bgp-fundamentals
+module: foundations
+difficulty: beginner
+estimated_minutes: 14
+prerequisites:
+  - bgp-autonomous-systems
+tags: [bgp, fundamentals, as-path]
+status: published
+version: 1

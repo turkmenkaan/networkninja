@@ -1,0 +1,179 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   NetworkNinja — global styles
+   Aesthetic: midnight dojo / terminal. Deep ink canvas, warm paper text,
+   one steel-cyan blade accent, sakura used sparingly.
+--------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-ink text-paper font-sans antialiased;
+  /* Subtle atmospheric depth: a faint radial bloom + dot grid texture. */
+  background-image:
+    radial-gradient(
+      900px 520px at 78% -8%,
+      rgba(79, 224, 196, 0.07),
+      transparent 60%
+    ),
+    radial-gradient(
+      700px 480px at 8% 6%,
+      rgba(255, 122, 138, 0.04),
+      transparent 55%
+    ),
+    radial-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: auto, auto, 22px 22px;
+  background-attachment: fixed;
+}
+
+/* Selection in the blade accent. */
+::selection {
+  background: rgba(79, 224, 196, 0.25);
+  color: #f4fffb;
+}
+
+/* Custom scrollbar — terminal-ish. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a323f transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #232a35;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #313a48;
+  background-clip: content-box;
+}
+
+/* Focus ring — accessible + on-brand. */
+:focus-visible {
+  outline: 2px solid rgba(79, 224, 196, 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------------------
+   Code blocks (rehype-pretty-code / Shiki).
+   We theme the wells to read like a real terminal: inset, hairline-bordered.
+--------------------------------------------------------------------------- */
+
+[data-rehype-pretty-code-figure] {
+  @apply my-6;
+}
+
+pre[data-theme],
+code[data-theme],
+:root {
+  --shiki-foreground: #d7e2dd;
+  --shiki-background: transparent;
+  --shiki-token-comment: #5d6675;
+  --shiki-token-keyword: #4fe0c4;
+  --shiki-token-string: #e9b872;
+  --shiki-token-function: #9ad6ff;
+  --shiki-token-constant: #ff9ca8;
+  --shiki-token-parameter: #d7e2dd;
+  --shiki-token-punctuation: #8b95a4;
+}
+
+pre {
+  @apply overflow-x-auto rounded-xl border border-ink-line bg-ink-inset px-0 py-4;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
+}
+
+pre code {
+  display: grid; /* lets line highlighting span full width */
+  font-size: 0.86rem;
+  line-height: 1.65;
+  counter-reset: line;
+}
+
+pre code [data-line] {
+  @apply border-l-2 border-transparent px-5;
+}
+
+/* Highlighted lines (// [!code highlight]) and titles. */
+pre code [data-highlighted-line] {
+  background: rgba(79, 224, 196, 0.07);
+  border-left-color: rgba(79, 224, 196, 0.6);
+}
+
+[data-rehype-pretty-code-title] {
+  @apply rounded-t-xl border border-b-0 border-ink-line bg-ink-raised px-5 py-2.5
+    font-mono text-xs text-paper-muted;
+}
+[data-rehype-pretty-code-title] + pre {
+  @apply rounded-t-none;
+}
+
+/* Inline code. */
+.prose :not(pre) > code {
+  @apply rounded-md border border-ink-line bg-ink-glow px-1.5 py-0.5 font-mono
+    text-[0.84em] text-blade;
+  font-weight: 500;
+}
+.prose :not(pre) > code::before,
+.prose :not(pre) > code::after {
+  content: none; /* kill the typography plugin's backtick quotes */
+}
+
+/* ---------------------------------------------------------------------------
+   ASCII topology diagrams.
+   The content embeds these as fenced blocks with no language. We detect those
+   (Shiki gives them a plain look) — but to make the teaching diagrams sing we
+   add a dedicated class via MDX components for fenced `text`/plain blocks.
+--------------------------------------------------------------------------- */
+.nn-ascii {
+  @apply my-6 overflow-x-auto rounded-xl border border-ink-line bg-ink-inset
+    px-5 py-4 font-mono text-[0.8rem] leading-relaxed text-paper-muted;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
+  white-space: pre;
+  tab-size: 2;
+}
+.nn-ascii::before {
+  content: "topology";
+  @apply mb-3 block font-mono text-[0.65rem] uppercase tracking-[0.2em] text-blade-dim;
+}
+
+/* Reveal/animation helper used on scroll-in sections. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}

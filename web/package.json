@@ -1,0 +1,34 @@
+{
+  "name": "networkninja-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NetworkNinja Tier-1 web app — renders the content library and tracks learner progress.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.0",
+    "next": "~14.2",
+    "next-mdx-remote": "5.0.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "rehype-pretty-code": "0.13.2",
+    "rehype-slug": "6.0.0",
+    "remark-gfm": "4.0.0",
+    "shiki": "1.22.2",
+    "yaml": "2.6.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "0.5.15",
+    "@types/node": "20.17.6",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.15",
+    "typescript": "5.6.3"
+  }
+}

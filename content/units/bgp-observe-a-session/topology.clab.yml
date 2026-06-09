@@ -1,0 +1,21 @@
+# Lab name → containers are named clab-bgp-observe-a-session-<node>.
+name: bgp-observe-a-session
+
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:9.1.0
+      binds:
+        - configs/r1/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r2:
+      kind: linux
+      image: frrouting/frr:9.1.0
+      binds:
+        - configs/r2/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+
+  links:
+    # AS 65001 (r1) <----> AS 65002 (r2), subnet 10.0.12.0/24
+    - endpoints: ["r1:eth1", "r2:eth1"]

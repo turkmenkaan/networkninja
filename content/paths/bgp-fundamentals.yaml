@@ -1,0 +1,64 @@
+# Path manifest - machine-readable source of truth for the BGP Fundamentals path.
+# Human-readable outline lives in docs/curriculum/bgp-fundamentals.md.
+# Units are referenced by id; their content lives in content/units/<id>/.
+# `status` lets the app render unbuilt units as "coming soon".
+
+id: bgp-fundamentals
+title: "BGP Fundamentals"
+summary: >
+  From "what is BGP and why does it exist" to confidently configuring eBGP/iBGP,
+  controlling path selection, and applying basic routing policy - hands-on with FRR.
+network_os: frrouting/frr
+status: in-progress
+
+modules:
+  - id: foundations
+    title: "BGP Foundations"
+    units:
+      - { id: bgp-why-bgp-exists,          status: published }
+      - { id: bgp-autonomous-systems,      status: published }
+      - { id: bgp-path-vector,             status: published }
+      - { id: bgp-sessions-and-messages,   status: published }
+      - { id: bgp-observe-a-session,       status: published }
+
+  - id: ebgp-fundamentals
+    title: "eBGP Fundamentals"
+    units:
+      - { id: bgp-ebgp-vs-ibgp,            status: planned }
+      - { id: bgp-advertising-prefixes,    status: planned }
+      - { id: bgp-ebgp-peering,            status: published }   # ← first built unit
+      - { id: bgp-advertising-routes,      status: planned }
+      - { id: bgp-ebgp-capstone,           status: planned }
+
+  - id: ibgp-fundamentals
+    title: "iBGP Fundamentals"
+    units:
+      - { id: bgp-why-ibgp,                status: planned }
+      - { id: bgp-ibgp-full-mesh,          status: planned }
+      - { id: bgp-loopback-peering-and-igp, status: planned }
+      - { id: bgp-ibgp-peering,            status: planned }
+      - { id: bgp-next-hop-self,           status: planned }
+      - { id: bgp-ibgp-capstone,           status: planned }
+
+  - id: path-attributes
+    title: "Path Attributes & Best-Path Selection"
+    units:
+      - { id: bgp-attribute-types,         status: planned }
+      - { id: bgp-as-path-and-next-hop,    status: planned }
+      - { id: bgp-local-pref-and-med,      status: planned }
+      - { id: bgp-weight-and-origin,       status: planned }
+      - { id: bgp-best-path-algorithm,     status: planned }
+      - { id: bgp-influence-local-pref,    status: planned }
+      - { id: bgp-as-path-prepend,         status: planned }
+      - { id: bgp-med-and-tiebreakers,     status: planned }
+      - { id: bgp-path-selection-capstone, status: planned }
+
+  - id: route-filtering
+    title: "Route Filtering & Policy"
+    units:
+      - { id: bgp-prefix-lists,            status: planned }
+      - { id: bgp-route-maps,              status: planned }
+      - { id: bgp-communities,             status: planned }
+      - { id: bgp-filter-with-prefix-lists, status: planned }
+      - { id: bgp-route-maps-and-communities, status: planned }
+      - { id: bgp-policy-capstone,         status: planned }

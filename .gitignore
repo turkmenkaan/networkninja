@@ -1,0 +1,21 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+build/
+
+# environment — keep .env.example, ignore real secrets
+.env
+.env.*
+!.env.example
+
+# local data captures (never commit collected emails)
+web/.data/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*
+.vercel

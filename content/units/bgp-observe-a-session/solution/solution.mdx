@@ -1,0 +1,53 @@
+# Reference: What You Should Have Seen
+
+This is an **observation lab**, so there's no puzzle to solve and no configuration to write. The starting configs (`configs/r1/frr.conf` and `configs/r2/frr.conf`) are already the *complete, final* configs: both routers boot with the eBGP session up and each loopback advertised. This page is a reference for the key things a healthy session shows, so you can confirm what you observed.
+
+## The session is Established
+
+```
+r1# show ip bgp summary
+```
+
+- Header: `local AS number 65001`, router-id `1.1.1.1`.
+- Neighbor `10.0.12.2`, `V` = `4`, `AS` = `65002` (different AS ⇒ **eBGP**).
+- The `Up/Down` column shows an **uptime**, not a state word: that's what "Established" looks like in the summary.
+- `State/PfxRcd` = `1`, exactly one prefix received (r2's loopback).
+
+## The neighbor detail confirms the theory
+
+```
+r1# show bgp neighbors 10.0.12.2
+```
+
+- **FSM:** `BGP state = Established`.
+- **Negotiated timers:** `Hold time is 180, keepalive interval is 60 seconds` (the agreed-on values from the OPEN exchange; keepalive is one-third of hold).
+- **Capabilities:** the `Neighbor capabilities:` block lists items such as `4 Byte AS`, `Route refresh`, and `Address Family IPv4 Unicast` each as **`advertised and received`**: i.e. negotiated by both sides.
+- **Message counters:** the `Message statistics` table shows `Opens: 1/1`, some `Updates` and a growing number of `Keepalives`, and `Notifications: 0/0` (zero is healthy, Notifications only appear when a session is torn down with an error).
+
+## The learned route and its AS_PATH
+
+```
+r1# show ip bgp
+```
+
+```
+   Network          Next Hop            Metric LocPrf Weight Path
+*> 1.1.1.1/32       0.0.0.0                  0         32768 i
+*> 2.2.2.2/32       10.0.12.2                0             0 65002 i
+```
+
+- `2.2.2.2/32` is the route **learned from r2**: best-path marked `*>`, **next-hop `10.0.12.2`** (the advertising eBGP neighbor), **AS_PATH `65002`**, origin `i`.
+- `1.1.1.1/32` is **our own** loopback: next-hop `0.0.0.0`, weight `32768`, **empty AS_PATH** (locally originated, hasn't crossed an AS boundary).
+
+From r2 the picture is the mirror image: `1.1.1.1/32` is learned with AS_PATH `65001`, and `2.2.2.2/32` is local.
+
+## The objectives
+
+Both checks are read-only confirmations that a healthy, established session exists to observe:
+
+1. `session-established`, `$.ipv4Unicast.peers['10.0.12.2'].state == "Established"` from `show ip bgp summary json`.
+2. `learned-peer-loopback`, `show ip bgp 2.2.2.2/32 json` returns a path whose AS_PATH contains `65002`, proving the prefix was learned across the AS boundary from r2.
+
+## Note
+
+Because this is a guided observation lab, there are intentionally **no `solution/rX/frr.conf` files**: the starting configs in `configs/` already *are* the full configuration. Nothing about the lab is meant to be changed; the goal is simply to read a live session fluently.

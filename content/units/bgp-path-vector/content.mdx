@@ -1,0 +1,136 @@
+# Path-Vector Routing: How BGP Sees the Internet
+
+Every routing protocol has to answer one question: *"To reach this destination, where do I send the packet?"* What separates the protocol families is **how much each router knows** when it answers. BGP belongs to its own family, **path-vector**, and the difference is the key to how it scales to the entire internet. Let's place it next to its two cousins.
+
+## The three families at a glance
+
+| Family | Examples | What each router knows |
+|--------|----------|------------------------|
+| Distance-vector | RIP, EIGRP | A destination + a metric, *via a neighbor* |
+| Link-state | OSPF, IS-IS | A full map of the whole domain |
+| Path-vector | **BGP** | The full *list of ASes* to reach a destination |
+
+## Distance-vector: "trust your neighbor's homework"
+
+A distance-vector router never sees the network. It only hears, from each directly-connected neighbor, *"I can reach 10.0.0.0/8 at a cost of 3 hops."* It adds the cost of the link to that neighbor and picks the lowest total. This is the **Bellman-Ford** algorithm, routing by rumor.
+
+<ASTopology
+  eyebrow="Distance-vector: routing by rumor"
+  nodeShape="router"
+  nodes={[
+    { id: "a", name: "A", col: 0, row: 0 },
+    { id: "b", name: "B", col: 1, row: 0 },
+    { id: "c", name: "C", col: 2, row: 0 },
+    { id: "d", name: "D", col: 3, row: 0, muted: true },
+  ]}
+  links={[
+    { from: "a", to: "b" },
+    { from: "b", to: "c" },
+    { from: "c", to: "d" },
+  ]}
+  legend="10.0.0.0/8 lives behind D"
+  caption={<>B only tells A a <em>distance</em>: "I can reach 10.0.0.0/8 in 2 hops, via C." A never sees the topology, just a number from a neighbor it has to trust.</>}
+/>
+
+It's simple and cheap, but it has a famous flaw. Because no router sees the topology, only "distance via a neighbor", when a link fails, routers can keep advertising stale distances back and forth, each incrementing the metric. This is the **count-to-infinity** problem, and it makes classic distance-vector protocols **converge slowly**.
+
+## Link-state: "everyone holds the same map"
+
+Link-state protocols flip the model. Every router **floods** a description of its own links to every other router, so they all build an identical **Link-State Database (LSDB)**: a complete map of the domain. Each router then runs **Dijkstra's algorithm (SPF)** on that map to compute the shortest path to everything.
+
+<ASTopology
+  eyebrow="Link-state: everyone holds the same map"
+  nodeShape="router"
+  nodes={[
+    { id: "a", name: "A", col: 0, row: 0 },
+    { id: "b", name: "B", col: 1, row: 0 },
+    { id: "c", name: "C", col: 0, row: 1 },
+    { id: "d", name: "D", col: 1, row: 1 },
+  ]}
+  links={[
+    { from: "a", to: "b" },
+    { from: "a", to: "c" },
+    { from: "b", to: "d" },
+    { from: "c", to: "d" },
+  ]}
+  caption={<>Every router floods its own links, so all four build an <em>identical</em> map of the domain and run Dijkstra (SPF) on it. Fast and loop-free, but it can't scale to the whole internet, and it would expose every operator's internal topology.</>}
+/>
+
+This converges fast and avoids loops, because nobody is routing by rumor; they're all reading the same map. It's excellent *inside* a single organization. But it does not work for the whole internet:
+
+- A global LSDB would be impossibly huge, and every change would re-flood everywhere.
+- It would **expose internal topology**: no operator wants to publish their internal router map to the world.
+
+Link-state is built for one administrative domain, not for a network of competing networks.
+
+## Path-vector: distance-vector that remembers the whole road
+
+BGP keeps the simple "tell your neighbor" style of distance-vector, but instead of a hop-count metric, each advertisement carries the **AS_PATH**: the ordered list of every autonomous system the route passed through. You don't learn a *distance*; you learn the *whole road*.
+
+Watch an AS_PATH build up, one AS at a time, as the prefix `203.0.113.0/24` (originated in AS 64500) travels outward:
+
+<ASPathFlow
+  eyebrow="AS_PATH grows at each hop"
+  prefix="203.0.113.0/24"
+  hops={["AS 64500", "AS 64501", "AS 64502", "AS 64503"]}
+  showGrowingPath
+  caption={<>As the prefix travels outward, each AS <strong>prepends its own ASN</strong> to the front of the AS_PATH. By AS 64503 the path reads "64503 64502 64501 64500": the whole road back to the origin.</>}
+/>
+
+By the time the route reaches AS 64503, its AS_PATH is `64503 64502 64501 64500`, which reads as: *"to reach 203.0.113.0/24, go through these ASes, ending at AS 64500 where it lives."* Every AS that re-advertises the prefix **prepends its own ASN** to the front. The full provenance travels with the route.
+
+## The killer feature: loop prevention
+
+That carried path isn't just informational: it's how BGP stays loop-free, with no count-to-infinity at all. The rule is one line:
+
+> **If a router receives a route whose AS_PATH already contains its own ASN, it rejects the route.**
+
+A router seeing itself in the path *knows* the advertisement is an echo that already passed through it.
+
+<ASPathFlow
+  eyebrow="Loop prevention"
+  asPath={["64502", "64501", "64500"]}
+  highlightIndex={1}
+  rejectLabel="AS 64501 sees its own ASN in the path"
+  caption={<>When an advertisement carrying AS_PATH "64502 64501 64500" arrives back at AS 64501, the router spots <strong>its own ASN</strong> already in the path and <strong>drops</strong> the route. No counting to infinity, the loop is caught instantly.</>}
+/>
+
+No metric counting up to infinity, no waiting for timers: the loop is caught instantly by inspecting the path. This is why path-vector converges cleanly at internet scale.
+
+## The same path drives policy
+
+Because the AS_PATH is right there in every route, it also powers BGP's decision-making:
+
+- **Default preference:** when two paths reach the same prefix, BGP prefers the one with the **shorter AS_PATH**: fewer ASes to traverse.
+- **Policy filtering:** operators can match on the path itself, *"don't accept any route that transits AS 64502,"* or *"only accept customer routes."*
+- **Tie-breaking:** AS_PATH length is a major step in BGP's **best-path selection** algorithm (we walk the full decision tree later in the *Path Attributes & Best-Path Selection* module).
+
+The path is data *and* policy lever at once.
+
+## Why path-vector scales: abstraction
+
+Here's the punchline. A link-state protocol would need every router on the internet in one database. BGP never does that. It **abstracts away internal topology**: you only ever see the **AS-level** path, never the routers inside each AS.
+
+<HierarchyTree
+  eyebrow="Abstraction: an AS is one opaque node"
+  nodes={[
+    { id: "as", label: "AS 64502", sublabel: "one node on the path", tier: 0, w: 200 },
+    { id: "r1", label: "r1", tier: 1, w: 72 },
+    { id: "r2", label: "r2", tier: 1, w: 72 },
+    { id: "r3", label: "r3", tier: 1, w: 72 },
+    { id: "more", label: "… dozens more", tier: 1, w: 132, muted: true },
+  ]}
+  edges={[
+    { from: "as", to: "r1", faint: true },
+    { from: "as", to: "r2", faint: true },
+    { from: "as", to: "r3", faint: true },
+    { from: "as", to: "more", faint: true },
+  ]}
+  caption={<>BGP shows AS 64502 as a single node in a path like "64503 64502 64500". Inside, it may run dozens of routers the rest of the internet never sees, and that hiding is exactly what lets BGP scale.</>}
+/>
+
+Each AS is a single opaque node on the path. The internet has fewer than 100,000 ASes but millions of routers. By routing at the AS level, BGP shrinks an impossible problem to a merely large one, while letting every operator keep their internals private.
+
+## What's next
+
+You now have the mental model: BGP is **path-vector**: distance-vector that carries the entire AS_PATH, using it for loop prevention, policy, and scale. Next, in **`bgp-sessions-and-messages`**, we get concrete about how two BGP routers actually talk: the TCP/179 connection, the four message types, and the state machine a session climbs to reach `Established`.

@@ -1,0 +1,40 @@
+# Solution: Your First eBGP Peering
+
+The lab is complete when the eBGP session between `r1` and `r2` is **Established**. The only configuration needed is a BGP process on each router and a single `neighbor ... remote-as` line pointing at the other side's AS.
+
+## r1 (AS 65001)
+
+```
+router bgp 65001
+ neighbor 10.0.12.2 remote-as 65002
+```
+
+## r2 (AS 65002)
+
+```
+router bgp 65002
+ neighbor 10.0.12.1 remote-as 65001
+```
+
+The complete resulting configs are in `solution/r1/frr.conf` and `solution/r2/frr.conf`.
+
+## Why it works
+
+- Each side runs BGP in its **own** AS (`router bgp <local-asn>`).
+- The `remote-as` value declares the neighbor's AS. Because the two AS numbers **differ** (65001 vs 65002), BGP treats this as an **external** (eBGP) session.
+- With the `traditional` defaults profile, defining a neighbor automatically activates it for the IPv4-unicast address family, so no explicit `address-family` block is required.
+- TCP opens on port 179, the routers exchange OPEN messages, agree on parameters, and the session settles into **Established**.
+
+## Verifying
+
+```
+r1# show ip bgp summary json
+```
+
+The check asserts:
+
+```
+$.ipv4Unicast.peers['10.0.12.2'].state == "Established"
+```
+
+No prefixes are exchanged yet; that's intentional and is the subject of the next lab.

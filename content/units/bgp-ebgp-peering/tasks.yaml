@@ -1,0 +1,20 @@
+# Objectives + verification for bgp-ebgp-peering.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+
+objectives:
+  - id: ebgp-session-established
+    description: "The eBGP session from r1 to r2 (10.0.12.2) reaches the Established state."
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['10.0.12.2'].state"
+        equals: "Established"
+    hint: >
+      eBGP peers live in *different* autonomous systems. On r1 the neighbor's
+      remote-as must be 65002; on r2 it must be 65001. If the session is stuck
+      in Active/Connect, the two ends disagree on the AS numbers or one side
+      isn't configured yet - check both routers.

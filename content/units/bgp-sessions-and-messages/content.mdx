@@ -1,0 +1,107 @@
+# BGP Sessions & Messages
+
+You already know *what* BGP carries: paths, with their full AS_PATH for loop prevention. This lesson is about *how* two routers actually talk: the connection they build, the four kinds of messages they send, and the step-by-step dance that gets them to the point where routes can flow.
+
+## BGP rides on TCP: port 179
+
+Unlike most routing protocols (OSPF and EIGRP run directly on IP, RIP on UDP), BGP opens a plain **TCP connection on port 179**. This is one of the most consequential design choices in the protocol.
+
+TCP gives BGP **reliable, ordered, error-checked delivery** for free. Because TCP guarantees every byte arrives, in order, exactly once, BGP doesn't have to reinvent any of that. And that single fact shapes BGP's whole update model:
+
+- **No periodic full refresh.** A link-state protocol re-floods its database on a timer because it can't trust that every neighbor heard every change. BGP *can* trust it (TCP confirmed delivery), so it advertises a route **once** and then stays quiet about it.
+- **Updates are incremental.** After the initial exchange, a router only sends what *changed*.
+- **Withdrawals are explicit.** If a route goes away, BGP doesn't wait for it to age out; it sends a message that says "withdraw this prefix."
+
+This makes BGP quiet and efficient on a stable network: a session can be up for months exchanging almost nothing but small heartbeats.
+
+## Peers are configured by hand
+
+BGP has **no neighbor auto-discovery**. There is no hello-on-a-multicast-address mechanism like OSPF's. Every peering is **manually configured** on both ends: you tell each router the IP address and AS number of the neighbor it should talk to. A BGP relationship is a deliberate, administrator-defined agreement between two networks, which is exactly what you want when those networks are different companies.
+
+## The four message types
+
+Everything BGP does on the wire is one of just four messages.
+
+### OPEN
+
+The **first** message each side sends once the TCP connection is up. It's the introduction and the negotiation. An OPEN carries:
+
+- the **BGP version** (effectively always 4),
+- the sender's **ASN**,
+- the proposed **hold time**,
+- the **BGP Identifier** (the router-id, a 32-bit value that looks like an IPv4 address), and
+- a list of **capabilities**: optional features the speaker supports, such as **multiprotocol** (IPv6, VPNs), **4-byte ASN** support, and **route refresh**.
+
+Both sides must agree on the essentials. If the ASNs don't match what each expects, or a required parameter is unacceptable, the session won't come up.
+
+### UPDATE
+
+The workhorse. An UPDATE carries route information in two directions:
+
+- **NLRI** (Network Layer Reachability Information), the prefixes being **advertised**: each described by its **path attributes** (AS_PATH, NEXT_HOP, and the rest you'll meet later), and/or
+- **withdrawn routes**: prefixes that are no longer reachable and should be removed.
+
+A single UPDATE can advertise new prefixes, withdraw old ones, or both. This is the message that actually builds the internet's routing table.
+
+### KEEPALIVE
+
+A tiny heartbeat with **no payload**: just a header. It's sent periodically so each side knows the other is still alive and the TCP session is healthy. By default a router sends one every **one-third of the hold time**.
+
+### NOTIFICATION
+
+The "something is wrong" message. When BGP hits an error, a malformed message, an unsupported parameter, an expired hold timer, or an administrative shutdown, it sends a NOTIFICATION describing the error and then **tears the session down**. A NOTIFICATION is always the last thing you see before a session drops.
+
+## Timers: hold time and keepalives
+
+Two timers keep a session honest:
+
+- **Hold time**: how long a router will wait *without hearing anything* from its peer before declaring the session dead. A common configured value is **180 seconds** (FRR's default). During session setup, the two sides **negotiate to the lower** of their two proposed hold times.
+- **Keepalive interval**: how often to send a KEEPALIVE. The convention is **one-third of the hold time**, so a 180s hold time gives a **60s** keepalive (FRR's defaults: 180/60).
+
+The relationship is the whole point: a router sends roughly three keepalives per hold period, so it would take losing **three consecutive heartbeats** before the peer gives up. Any UPDATE or KEEPALIVE resets the hold timer; if it ever reaches zero, the router sends a NOTIFICATION and drops the session.
+
+## The BGP Finite State Machine
+
+A session doesn't snap straight to "up." It walks through a defined sequence of states, the **BGP FSM**. In order:
+
+<StateMachine
+  eyebrow="BGP finite state machine"
+  states={[
+    { id: "idle", label: "Idle", row: 0, lane: 0 },
+    { id: "connect", label: "Connect", row: 1, lane: 0 },
+    { id: "active", label: "Active", row: 1, lane: 1 },
+    { id: "opensent", label: "OpenSent", row: 2, lane: 0 },
+    { id: "openconfirm", label: "OpenConfirm", row: 3, lane: 0 },
+    { id: "established", label: "Established", row: 4, lane: 0, highlight: true, note: "routes (UPDATEs) flow only here" },
+  ]}
+  transitions={[
+    { from: "idle", to: "connect", label: "start, try TCP" },
+    { from: "connect", to: "opensent", label: "TCP opens" },
+    { from: "connect", to: "active", label: "TCP fails" },
+    { from: "active", to: "opensent", label: "retry, TCP opens" },
+    { from: "opensent", to: "openconfirm", label: "OPEN ok" },
+    { from: "openconfirm", to: "established", label: "KEEPALIVE ok" },
+  ]}
+  caption={<>A session climbs Idle → Connect → OpenSent → OpenConfirm → Established, with Active as the TCP-retry detour. Routes are exchanged <strong>only</strong> in Established; every state before it is just plumbing.</>}
+/>
+
+- **Idle**: the starting point. BGP is initialized but not trying to connect yet (or has been reset back here after a failure).
+- **Connect**: waiting for the outgoing **TCP** three-way handshake to complete.
+- **Active**: the TCP connect didn't succeed; the router is actively retrying the connection.
+- **OpenSent**: TCP is up; this side has sent its **OPEN** and is waiting for the peer's OPEN.
+- **OpenConfirm**: both OPENs were exchanged and accepted; waiting for a **KEEPALIVE** (or NOTIFICATION) to confirm.
+- **Established**: the session is fully up. **This is the only state in which UPDATE messages, actual routes, are exchanged.** Everything before it is just plumbing.
+
+Commit that last point to memory: a neighbor that isn't **Established** is exchanging *no routes*, no matter how healthy it looks otherwise.
+
+## Reading state as a diagnosis
+
+Because the FSM is so well-defined, *where* a session is stuck tells you *what's* wrong:
+
+- **Stuck in `Connect` or `Active`**: a TCP/reachability or configuration problem. The far end isn't reachable on port 179, isn't configured yet, or the two ends disagree on something (often the AS numbers). `Active` specifically means "I keep trying TCP and it keeps failing."
+- **`Idle`**: the session is administratively down (shut down on purpose) or there's **no route to the peer** at all, so BGP can't even attempt the TCP connection.
+- **Flapping in and out of `Established`**: usually expired hold timers: keepalives aren't arriving in time.
+
+## What's next
+
+You now have the full mental model: a hand-built TCP/179 session, four messages, and a six-state path to **Established** where routes finally flow. Next, in the hands-on lab **`bgp-observe-a-session`**, you'll boot a real pair of FRR routers with a working eBGP session and watch all of this for yourself (the states, the timers, and the messages) using `show ip bgp summary` and `show bgp neighbors`. Time to see the theory move.

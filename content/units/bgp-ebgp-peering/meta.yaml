@@ -1,0 +1,23 @@
+id: bgp-ebgp-peering
+type: lab
+title: "Your First eBGP Peering"
+summary: "Bring up an eBGP session between two routers in different autonomous systems."
+path: bgp-fundamentals
+module: ebgp-fundamentals
+difficulty: beginner
+estimated_minutes: 25
+prerequisites:
+  - bgp-ebgp-vs-ibgp
+  - bgp-sessions-and-messages
+tags: [bgp, ebgp, frr, peering]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 2
+  est_ram_mb: 512
+  images: [frrouting/frr]
+  est_boot_seconds: 20
+
+status: published
+version: 1

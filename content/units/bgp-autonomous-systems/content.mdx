@@ -1,0 +1,87 @@
+# Autonomous Systems & ASNs
+
+The internet isn't one network; it's tens of thousands of independent networks that agreed to interconnect. BGP is the language they use to exchange reachability. But before two networks can speak BGP, each needs an identity: a number that says "this is me, and I set my own routing policy." That identity is the **Autonomous System Number**.
+
+## What is an Autonomous System?
+
+An **Autonomous System (AS)** is a collection of IP prefixes under a single **administrative and routing policy**. The classic definition: a network (or group of networks) operated by one entity that presents a **consistent, unified routing policy** to the rest of the internet.
+
+"Single policy" is the key idea. Inside an AS, the operator decides freely how packets move, which IGP runs, how routers connect. To the *outside* world, the AS is one black box that makes one set of decisions about what it advertises and what it accepts. Comcast, Google, your university, a regional ISP: each is one or more autonomous systems.
+
+Every AS is identified by a globally unique **AS Number (ASN)**. Uniqueness matters: the ASN is how every router on the internet refers to your network, so no two operators can share one.
+
+## Where ASNs come from
+
+You don't invent an ASN; you're *assigned* one, through a delegation chain that keeps them globally unique:
+
+<HierarchyTree
+  eyebrow="Where ASNs come from"
+  nodes={[
+    { id: "iana", label: "IANA", sublabel: "global pool", tier: 0 },
+    { id: "arin", label: "ARIN", sublabel: "North America", tier: 1 },
+    { id: "ripe", label: "RIPE NCC", sublabel: "Europe / M. East", tier: 1 },
+    { id: "apnic", label: "APNIC", sublabel: "Asia-Pacific", tier: 1 },
+    { id: "lacnic", label: "LACNIC", sublabel: "Latin America", tier: 1 },
+    { id: "afrinic", label: "AFRINIC", sublabel: "Africa", tier: 1 },
+    { id: "ops", label: "Operators / ISPs / enterprises", tier: 2, w: 300, muted: true },
+  ]}
+  edges={[
+    { from: "iana", to: "arin" },
+    { from: "iana", to: "ripe" },
+    { from: "iana", to: "apnic" },
+    { from: "iana", to: "lacnic" },
+    { from: "iana", to: "afrinic" },
+    { from: "arin", to: "ops", faint: true },
+    { from: "ripe", to: "ops", faint: true },
+    { from: "apnic", to: "ops", faint: true },
+    { from: "lacnic", to: "ops", faint: true },
+    { from: "afrinic", to: "ops", faint: true },
+  ]}
+  tierLabels={{ 1: "Regional Internet Registries (RIRs)" }}
+  caption={<>IANA delegates blocks of AS numbers to the five RIRs, which assign them to operators. The chain keeps every ASN globally unique.</>}
+/>
+
+- **IANA** holds the master pool of all ASNs.
+- IANA delegates large blocks to the five **Regional Internet Registries (RIRs)**: **ARIN** (North America), **RIPE NCC** (Europe/Middle East), **APNIC** (Asia-Pacific), **LACNIC** (Latin America), and **AFRINIC** (Africa).
+- An operator requests an ASN from the RIR (or a sponsoring LIR) serving its region, justifying the need, typically that it will multihome to more than one provider.
+
+## 16-bit vs 32-bit ASNs
+
+Original ASNs were **16-bit**: values **0-65535**. With ~64,000 usable numbers, the pool ran low as the internet grew, so **RFC 6793** introduced **32-bit (4-byte) ASNs**, extending the range to **0-4294967295**. The old 16-bit numbers are simply the bottom of the new 32-bit space; they remain valid.
+
+A 32-bit ASN can be written two ways:
+
+- **asplain**: one decimal number, e.g. `131072`. This is the modern, preferred notation.
+- **asdot**: a `high.low` pair, e.g. `2.0` (the same value). You'll still see it in older docs and some CLIs.
+
+## Public vs private ASN ranges
+
+Like IP addresses, ASNs have **public** ranges (globally routable, assigned by RIRs) and **private** ranges (for internal use only). Private ASNs let you run BGP inside your own network without burning a globally unique number, but they **must be stripped at the internet edge** (e.g. with `remove-private-AS`), because they are not unique and have no meaning to anyone else.
+
+| Range | Bits | Meaning |
+|-------|------|---------|
+| 0 | - | Reserved (must not be used as a normal ASN) |
+| 1 - 64495 | 16 | Public, assigned by IANA/RIRs |
+| 23456 | 16 | Reserved, `AS_TRANS`, for 16-bit-only routers representing a 32-bit ASN |
+| 64512 - 65534 | 16 | **Private use** |
+| 65535 | 16 | Reserved |
+| 65536 - 4199999999 | 32 | Public, assigned by IANA/RIRs |
+| 4200000000 - 4294967294 | 32 | **Private use** |
+| 4294967295 | 32 | Reserved |
+
+`AS_TRANS` (23456) is a compatibility placeholder: when a route with a real 32-bit ASN passes through an old router that only understands 16-bit numbers, the path shows `23456` while the true ASN travels in a separate attribute.
+
+## The ASN is the unit of routing policy
+
+Why does all of this matter? Because the ASN is the **atom of BGP**. It is the unit that policy is written around, and it's the value that shows up in the **AS_PATH**: the list of autonomous systems a route has traversed. Every time a route crosses from one AS to another, the sending AS prepends its number. That AS_PATH is how BGP picks routes *and* how it prevents loops (an AS that sees its own number in a path rejects the route). We'll dig into that mechanism in `bgp-path-vector`.
+
+A quick forward look at how ASNs frame the two kinds of BGP session:
+
+- A session between **different** ASNs is **eBGP** (external BGP), the protocol *between* organizations.
+- A session **within the same** ASN is **iBGP** (internal BGP), carrying routes *across* one organization's network.
+
+That single distinction, same AS or different AS, drives much of how BGP behaves. We'll only name it here; the full story comes in the eBGP and iBGP modules.
+
+## What's next
+
+You now know what an AS is, how ASNs are allocated, and why every route carries them. Next, in **`bgp-path-vector`**, we'll follow the ASN into the AS_PATH and see how BGP uses that list of autonomous systems to choose routes and stop loops, the core of what makes BGP a *path-vector* protocol.

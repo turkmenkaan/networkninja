@@ -1,0 +1,179 @@
+# Reading a Live BGP Session
+
+In the last lab you'll *build* a BGP session. In this one you don't build anything; the session is **already up**. Two routers in two different autonomous systems booted with a working eBGP peering between them, and they're already exchanging a route. Your job is to learn to **read** that session: to look at a live router and recognize everything you studied in `bgp-sessions-and-messages`, the FSM state, the negotiated timers, the capabilities, the message counters, and the BGP table with its AS_PATH.
+
+Think of this as the autopsy you do on a *healthy* patient. When you can read a working session cold, you'll know exactly what "broken" looks like later.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "lo 2.2.2.2/32", col: 1, row: 0 },
+  ]}
+  links={[{ from: "r1", to: "r2" }]}
+  legend="eBGP over 10.0.12.0/24 (r1 .1, r2 .2, on eth1)"
+  caption={<>Two routers in different autonomous systems, peered over their eth1 link. Both boot with the eBGP session <strong>already Established</strong> and each advertising its loopback, so there's a real prefix and AS_PATH to read on each side.</>}
+/>
+
+Both routers boot fully configured. The eBGP session between `r1` (AS 65001) and `r2` (AS 65002) is already **Established**, and each router is advertising its loopback into BGP, so there's a real prefix with a real AS_PATH to look at on each side.
+
+## Deploy the lab
+
+From this unit's directory:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots both routers with the session already coming up. Drop into `r1`'s FRR shell:
+
+```bash
+docker exec -it clab-bgp-observe-a-session-r1 vtysh
+```
+
+Everything below is observation. **You won't enter `configure terminal` at all** (except the one optional "watch the FSM move" step at the end, which only resets the session; it changes no config).
+
+## Step 1: The summary: is the session up?
+
+Start with the one command you'll run more than any other in your BGP life:
+
+```
+r1# show ip bgp summary
+```
+
+Read it line by line:
+
+- The header shows **`BGP router identifier`** (here `1.1.1.1`, taken from the highest loopback) and **`local AS number 65001`**: that's *our* AS.
+- The neighbor row lists `10.0.12.2`. The **`V`** column is `4` (BGP version 4). The **`AS`** column is `65002`: the *remote* AS, confirming this is **eBGP** (different AS from ours).
+- The **`Up/Down`** column shows an **uptime** (e.g. `00:01:23`) rather than a state word like `Active`. **An uptime means the session is Established**: that's the single most important thing to read here.
+- The **`State/PfxRcd`** column shows the number of prefixes received from this neighbor: **`1`**: that's r2's loopback `2.2.2.2/32`. (If a session were *not* up, this column would show the FSM state, e.g. `Active`, instead of a number.)
+
+> What you just read: the session reached **Established** and is exchanging exactly one route. That single line ties directly back to the FSM you learned: Established is the final state, and only in Established do routers exchange Update messages.
+
+## Step 2: The neighbor in depth: FSM, timers, capabilities, counters
+
+Now zoom in on the peer. This is where all the theory becomes concrete:
+
+```
+r1# show bgp neighbors 10.0.12.2
+```
+
+It's a wall of text, but you already know what to look for. Hunt down each of these:
+
+**The FSM state.**
+```
+BGP state = Established, up for 00:02:14
+```
+This is the finite-state machine from the lesson. The session walked `Idle → Connect → OpenSent → OpenConfirm → Established`, and it stuck the landing.
+
+**The negotiated timers.**
+```
+Hold time is 180, keepalive interval is 60 seconds
+```
+These are the values the two routers *agreed on* in their OPEN messages (BGP uses the lower of the two proposed hold times). The keepalive interval is one-third of the hold time. Keepalives are the heartbeat; miss enough of them and the hold timer expires and the session drops.
+
+**The capabilities.** Look for the `Neighbor capabilities:` block, with lines like:
+```
+  4 Byte AS: advertised and received
+  Route refresh: advertised and received
+  Address Family IPv4 Unicast: advertised and received
+```
+Each capability that reads **`advertised and received`** was offered by *both* sides in the OPEN exchange and is therefore in use. This is the capability negotiation from the lesson, made visible.
+
+**The message counters.** Near the bottom, a `Message statistics` table counts each BGP message type, sent and received:
+```
+                         Sent       Rcvd
+    Opens:                  1          1
+    Notifications:          0          0
+    Updates:                2          2
+    Keepalives:            12         12
+    ...
+```
+These are exactly the **four message types** from `bgp-sessions-and-messages`:
+- **Opens: 1 / 1**: one OPEN each way to start the session.
+- **Updates**: the route advertisements (each side sent its loopback).
+- **Keepalives**: the heartbeat, climbing roughly once per keepalive interval. Watch this number grow if you leave the session up.
+- **Notifications: 0 / 0**: zero is good. A Notification is only ever sent to *tear a session down* with an error. None here means nothing has gone wrong.
+
+> What you just read: every abstract idea from the messages lesson (the FSM, OPEN-time negotiation of timers and capabilities, and the four message types) printed live on a real router.
+
+## Step 3: The BGP table: routes and AS_PATH
+
+Now look at what the session actually carried:
+
+```
+r1# show ip bgp
+```
+
+You'll see something like:
+
+```
+   Network          Next Hop            Metric LocPrf Weight Path
+*> 1.1.1.1/32       0.0.0.0                  0         32768 i
+*> 2.2.2.2/32       10.0.12.2                0             0 65002 i
+```
+
+Read the `2.2.2.2/32` row, the route you *learned* from r2:
+
+- **`*>`**: the `*` means the route is valid; the **`>`** means it's the **best path** (the one installed into the routing table). With only one path here it's trivially best, but training your eye to find the `>` pays off later.
+- **Next Hop `10.0.12.2`**: to reach `2.2.2.2/32`, send packets to r2's interface address. On eBGP, the next-hop is the advertising neighbor.
+- **`Path` = `65002 i`**: this is the **AS_PATH**. It says "to get to this prefix, traffic passes through AS 65002." The `i` is the origin code (`i` = IGP, i.e. the route was originated with a `network` statement). As this route crosses more AS boundaries in a bigger network, each AS prepends its number here; that growing list is exactly how BGP detects and prevents loops.
+
+Compare it with the `1.1.1.1/32` row: next-hop `0.0.0.0`, weight `32768`, empty path. That's **our own** loopback, locally originated, no AS_PATH because it hasn't crossed any AS boundary yet.
+
+> What you just read: the AS_PATH-vector model from `bgp-path-vector` in one line. r2's prefix carries `65002`; ours carries nothing because it's local.
+
+Want to see the same route from r2's perspective? Open a second terminal:
+
+```bash
+docker exec -it clab-bgp-observe-a-session-r2 vtysh
+r2# show ip bgp
+```
+
+On r2, `1.1.1.1/32` is the learned route with AS_PATH `65001`, and `2.2.2.2/32` is local. The session is symmetric: each side originates one prefix and learns one.
+
+## Step 4 (optional): Watch the FSM move
+
+So far the session has just *been* Established. If you want to actually **watch** it walk the state machine, you can reset it. This briefly tears the session down and lets it rebuild, purely for learning; it comes right back on its own and changes no configuration.
+
+On `r1`:
+
+```
+r1# clear ip bgp *
+```
+
+Immediately re-run the summary a few times:
+
+```
+r1# show ip bgp summary
+```
+
+For a second or two you may catch the neighbor in `Idle`, `Connect`, or `Active` in the `State/PfxRcd` column before it returns to an uptime (Established). You're watching the FSM in motion: the TCP connection re-forms, OPENs are re-exchanged, capabilities and timers are re-negotiated, and Updates re-flow. Within a few seconds you're back to a healthy session with `2.2.2.2/32` relearned.
+
+> If you blink and miss the transition, that's normal; over a direct link the session re-establishes very fast. The point is that nothing about the session is permanent; it's a living thing that the FSM rebuilds every time.
+
+## Objectives
+
+This lab has nothing to fix; these objectives just confirm you have a healthy session in front of you to observe.
+
+✅ **Objective 1:** the eBGP session from `r1` to `10.0.12.2` is **Established** (`show ip bgp summary` shows an uptime, not a state word).
+
+✅ **Objective 2:** r1 has **learned `2.2.2.2/32`** from r2 over BGP, with **AS_PATH `65002`** (`show ip bgp 2.2.2.2/32`).
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- **`show ip bgp summary`** is your at-a-glance health check: a neighbor with an *uptime* (not a state word) in Up/Down is **Established**, and the `State/PfxRcd` column tells you how many routes it's sending you.
+- **`show bgp neighbors`** exposes the live FSM state, the **negotiated** hold/keepalive timers, the **capabilities** both sides agreed on, and the **message counters**: the four message types (Open / Update / Keepalive / Notification) from the lesson, counted in real time.
+- **`show ip bgp`** is the table: the `>` marks the best path, the next-hop tells you where to forward, and the **AS_PATH** records every AS a prefix has traversed: local routes have an empty path, learned routes carry the neighbor's AS.
+- A BGP session is not static. `clear ip bgp *` drops and rebuilds it, walking the FSM all over again.
+
+**Next:** you've now *read* a working session; time to *build* one yourself. Continue to the **eBGP Fundamentals** module, starting with `bgp-ebgp-vs-ibgp` to nail down the difference between external and internal BGP before you configure your first peering.

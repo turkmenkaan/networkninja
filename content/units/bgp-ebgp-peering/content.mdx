@@ -1,0 +1,113 @@
+# Your First eBGP Peering
+
+Two routers. Two different companies. Two different autonomous systems. Right now they share a cable but have no idea how to talk BGP to each other. Your job: introduce them.
+
+By the end of this lab you'll have brought up a working **eBGP** session between `r1` (AS 65001) and `r2` (AS 65002), the single most fundamental skill in all of BGP.
+
+## Topology
+
+```
+   AS 65001                         AS 65002
+  ┌────────┐    10.0.12.0/24     ┌────────┐
+  │   r1   │ eth1 ──────── eth1  │   r2   │
+  │ .1     │                     │ .2     │
+  └────────┘                     └────────┘
+   lo 1.1.1.1/32                  lo 2.2.2.2/32
+```
+
+The interface addressing is **already configured** for you. The BGP session is not; that's the part you'll build.
+
+## Deploy the lab
+
+From this unit's directory:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots both routers. Drop into `r1`'s FRR shell:
+
+```bash
+docker exec -it clab-bgp-ebgp-peering-r1 vtysh
+```
+
+## Step 1: Look before you leap
+
+On `r1`, confirm the link is up and check BGP (there won't be any yet):
+
+```
+r1# show interface brief
+r1# show ip bgp summary
+```
+
+You should see `eth1` with `10.0.12.1/24`, and BGP reporting that it isn't running. Good, that's the starting line.
+
+## Step 2: Configure eBGP on r1
+
+Enter configuration mode and start a BGP process in **AS 65001**, then point it at `r2`'s interface address, telling it `r2` lives in **AS 65002**:
+
+```
+r1# configure terminal
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 10.0.12.2 remote-as 65002
+r1(config-router)# end
+r1# write memory
+```
+
+Because the neighbor's AS (65002) is **different** from our own (65001), this is an **eBGP** session.
+
+## Step 3: Configure eBGP on r2
+
+A BGP session takes two. Open `r2` in another terminal:
+
+```bash
+docker exec -it clab-bgp-ebgp-peering-r2 vtysh
+```
+
+Mirror the configuration: `r2` is in **AS 65002** and its neighbor `r1` is in **AS 65001**:
+
+```
+r2# configure terminal
+r2(config)# router bgp 65002
+r2(config-router)# neighbor 10.0.12.1 remote-as 65001
+r2(config-router)# end
+r2# write memory
+```
+
+## Step 4: Verify
+
+Back on `r1`, watch the session come up:
+
+```
+r1# show ip bgp summary
+```
+
+Within a few seconds the neighbor `10.0.12.2` should move to **`Established`** (in the summary it shows as a state, or an uptime once it's up). You can also inspect the session in detail:
+
+```
+r1# show bgp neighbors 10.0.12.2
+```
+
+✅ **Objective:** the eBGP session from `r1` to `10.0.12.2` is **Established**.
+
+> Notice that no routes are being exchanged yet: the session is up, but neither router is advertising any prefixes. Putting routes *into* BGP is the next lab, `bgp-advertising-routes`.
+
+## Troubleshooting
+
+- **Stuck in `Active` or `Connect`?** The far end isn't configured yet, or the two ends disagree on AS numbers. The remote-as on each side must match the *other* router's actual AS.
+- **`Idle`?** Check the neighbor IP: you must peer with the *interface* address (`10.0.12.2`), not the loopback, in this lab.
+- **Can't even ping `10.0.12.2`?** Re-check the link in the topology and that `eth1` has its address (`show interface brief`).
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- An **eBGP** session is one between neighbors in **different** autonomous systems.
+- BGP is configured under `router bgp <ASN>`, and a neighbor is defined with `neighbor <ip> remote-as <their-ASN>`.
+- A session reaching **`Established`** means the TCP/179 connection and BGP OPEN negotiation succeeded, but that alone exchanges *no routes*.
+
+**Next:** advertise real prefixes across this session in `bgp-advertising-routes`, then prove you can do it all from scratch in the `bgp-ebgp-capstone` challenge.

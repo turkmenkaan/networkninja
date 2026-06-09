@@ -1,0 +1,13 @@
+id: bgp-sessions-and-messages
+type: lesson
+title: "BGP Sessions & Messages: TCP/179, the Four Messages, and the State Machine"
+summary: "How two BGP routers form a session over TCP/179, the four message types they exchange, and the finite state machine that takes them to Established."
+path: bgp-fundamentals
+module: foundations
+difficulty: beginner
+estimated_minutes: 15
+prerequisites:
+  - bgp-path-vector
+tags: [bgp, fundamentals, fsm, messages]
+status: published
+version: 1

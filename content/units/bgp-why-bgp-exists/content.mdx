@@ -1,0 +1,94 @@
+# Why BGP Exists
+
+There is no "the internet" in the sense of a single network someone owns and operates. What we call the internet is tens of thousands of **separate** networks (run by ISPs, cloud providers, universities, banks, content companies) that have all agreed to exchange traffic. Each of those independently operated networks is an **Autonomous System (AS)**: one administrative domain, under one routing policy, with its own block of IP addresses.
+
+<ASTopology
+  eyebrow="Network of networks"
+  nodes={[
+    { id: "att", name: "AT&T", asn: "AS 7018", col: 0, row: 0 },
+    { id: "lumen", name: "Lumen", asn: "AS 3356", col: 1, row: 0 },
+    { id: "google", name: "Google", asn: "AS 15169", col: 2, row: 0 },
+    { id: "isp", name: "Local ISP", asn: "AS 65010", col: 0, row: 1, muted: true },
+    { id: "cloud", name: "Cloud Region", asn: "AS 65020", col: 2, row: 1, muted: true },
+  ]}
+  links={[
+    { from: "att", to: "lumen" },
+    { from: "lumen", to: "google" },
+    { from: "att", to: "isp", faint: true },
+    { from: "google", to: "cloud", faint: true },
+  ]}
+  legend="BGP session, runs on every AS boundary"
+  caption={<>The internet is a network <em>of networks</em>: independently run autonomous systems, glued together by BGP at their borders.</>}
+/>
+
+The question this lesson answers is simple: **once you have all these independent networks, how does a packet find its way from one to another?** That is the job the Border Gateway Protocol (BGP) was invented to do.
+
+## Inside one network: Interior Gateway Protocols
+
+Within a single AS, routers need to learn how to reach each other. That's the job of an **Interior Gateway Protocol (IGP)**. You may already know the common ones:
+
+- **OSPF** and **IS-IS**: link-state protocols that build a full map of the domain.
+- **RIP**: an old distance-vector protocol (simple, limited).
+- **EIGRP**: Cisco's advanced distance-vector protocol.
+
+Different mechanics, but they share three assumptions:
+
+1. **They optimize for the shortest path.** Lowest cost, fewest hops, fastest link: the goal is the mathematically best route to a destination.
+2. **They assume mutual trust.** Every router in the domain is operated by the same organization, so routes are shared freely and believed without question.
+3. **They're built for one administrative domain.** Tens, hundreds, maybe a few thousand routes: the scale of a single company's network.
+
+Those assumptions are perfect *inside* an AS. They fall apart the moment you try to route the *entire* internet.
+
+## Why IGPs can't run the internet
+
+**Scale.** The global routing table, the "Default-Free Zone" (DFZ) table a backbone router must carry, currently holds **over 950,000 IPv4 routes**, and keeps growing. An IGP that floods a full map of every link would melt under that load. IGPs simply were never designed for hundreds of thousands of prefixes spanning tens of thousands of networks.
+
+**Trust.** AT&T does not trust Google's routers, and shouldn't. Networks owned by different companies, sometimes competitors, cannot blindly believe whatever routes a neighbor sends. Routing between ASes needs to be *filtered* and *verified*, not freely shared.
+
+**Policy.** This is the big one. Between networks, the "best" path is almost never the shortest one; it's the one that makes **business** sense. Consider these relationships:
+
+- **Customer**: a network that *pays you* to carry its traffic. You happily route to and from it.
+- **Peer**: a network you swap traffic with for free (settlement-free), but only your traffic and theirs.
+- **Provider**: a network *you pay* to reach the rest of the internet.
+
+A sane operator prefers sending traffic to a customer over a peer, and a peer over a (paid) provider, even when the paid path is shorter in hops. **An IGP has no way to express "this route is cheaper for my business."** It only knows distance. That gap is exactly what BGP fills.
+
+## BGP: the one protocol between networks
+
+BGP is the **Exterior Gateway Protocol (EGP)**: the protocol that runs *between* autonomous systems and glues them into the internet. In practice it is the *only* EGP in use; there is no competitor running the global table. Where IGPs handle the inside, BGP handles the borders between networks.
+
+Its defining trait: **BGP prioritizes policy and control over shortest path.** It doesn't ask "what's the fewest hops?" It asks "given my business relationships, my filters, and what I'm willing to advertise, which path do I *choose*?" Reachability and policy drive the decision; hop count is far down the list of tie-breakers. BGP is less a navigation algorithm and more a system for **expressing and enforcing routing policy** at every network boundary.
+
+## Built for scale and stability
+
+Carrying ~950k+ routes across the planet demands a protocol that doesn't constantly redo its work. BGP is engineered for stability:
+
+- **It runs over TCP** (port 179). TCP gives BGP reliable, ordered delivery, so BGP never has to build its own retransmission machinery.
+- **It sends incremental updates, not periodic floods.** Once two routers exchange their full tables at session startup, they only send **changes**: a prefix appearing, a path withdrawn. There is no periodic re-flooding of the entire table the way older protocols re-announce everything on a timer.
+- **That makes it quiet and stable at rest.** A link that doesn't change generates no traffic. With nearly a million prefixes, anything else would be unworkable.
+
+<MessageTimeline
+  eyebrow="Message volume over time"
+  axisLabel="MSGS"
+  timeLabel="time →"
+  phases={[
+    { type: "burst", label: "session up", sublabel: "full tables, once", bars: [72, 98, 58, 104, 82, 96, 66, 90], accent: "blade" },
+    { type: "flat", label: "steady state", sublabel: "(silence)", accent: "muted" },
+    { type: "pulse", label: "a route changes", sublabel: "one update sent", accent: "sakura" },
+  ]}
+  caption="After one full exchange at startup, BGP goes quiet, then sends only the delta when something changes. That's how it carries ~950,000 routes without re-flooding."
+/>
+
+## Who actually runs BGP?
+
+Anyone who owns an **Autonomous System Number (ASN)** and connects to more than one other network:
+
+- **ISPs and transit providers**: their whole business is moving traffic between networks.
+- **Content and cloud providers** (Google, Cloudflare, Netflix, AWS): they announce their address space to the world and steer how users reach them.
+- **Large or multi-homed enterprises**: a company connected to *two or more* upstream providers for redundancy runs BGP to use both links and survive losing one.
+
+If you only have a single internet connection from one provider, you don't need BGP; a default route is enough. BGP earns its keep the moment you have **choices** to make at your network's edge.
+
+## What's next
+
+You now know *why* BGP exists: the internet is a network of independent ASes, IGPs can't scale to it or express policy across trust boundaries, and BGP is the policy-driven protocol that glues those ASes together. Next, we'll zoom in on the AS itself (what it is, how Autonomous System Numbers work, and the difference between public and private ASNs) in **`bgp-autonomous-systems`**.

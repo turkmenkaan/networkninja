@@ -1,0 +1,22 @@
+id: bgp-observe-a-session
+type: lab
+title: "Reading a Live BGP Session"
+summary: "Explore a pre-built, already-Established eBGP session: read its state, FSM, timers, capabilities, and the BGP table - no configuration required."
+path: bgp-fundamentals
+module: foundations
+difficulty: beginner
+estimated_minutes: 20
+prerequisites:
+  - bgp-sessions-and-messages
+tags: [bgp, fundamentals, observation, frr]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 2
+  est_ram_mb: 512
+  images: [frrouting/frr]
+  est_boot_seconds: 20
+
+status: published
+version: 1

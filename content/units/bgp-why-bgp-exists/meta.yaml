@@ -1,0 +1,12 @@
+id: bgp-why-bgp-exists
+type: lesson
+title: "Why BGP Exists"
+summary: "How the internet stitches independently run networks together, and why that job needs a protocol built for policy and scale rather than shortest path."
+path: bgp-fundamentals
+module: foundations
+difficulty: beginner
+estimated_minutes: 12
+prerequisites: []
+tags: [bgp, fundamentals, routing]
+status: published
+version: 1

@@ -1,0 +1,47 @@
+# Objectives + verification for bgp-observe-a-session.
+# This is a read-only OBSERVATION lab - the session boots already up, so these
+# objectives don't ask the learner to fix anything; they confirm there is a
+# healthy, established session (with real routes) to observe.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+
+objectives:
+  - id: session-established
+    description: "The eBGP session from r1 to r2 (10.0.12.2) is Established and ready to observe."
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['10.0.12.2'].state"
+        equals: "Established"
+    hint: >
+      What to look for: this session boots already up, so the neighbor
+      10.0.12.2 should read "Established" within a few seconds of deploy. In the
+      `show ip bgp summary` table that shows up as an uptime in the Up/Down
+      column instead of a state word. If it isn't up yet, give it a moment and
+      re-run the command.
+
+  - id: learned-peer-loopback
+    description: "r1 has learned r2's loopback 2.2.2.2/32 over BGP, with AS_PATH 65002."
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp 2.2.2.2/32 json'"
+      parse: json
+      # JSON path CONFIRMED against FRR 9.1.0's BGP JSON schema (bgp_route.c,
+      # route_vty_out_detail). For `show ip bgp <prefix> json`, FRR returns a
+      # top-level object with a "paths" array (ordered best-path first); each
+      # path has an "aspath" object whose "string" is the AS_PATH (here exactly
+      # "65002"). The assert below checks that the learned path carries AS 65002,
+      # which proves the prefix was received over the eBGP session (and not, say,
+      # locally originated). `contains` (not `equals`) keeps this robust to any
+      # future AS_PATH prepending and to whitespace/ordering in the string.
+      assert:
+        path: "$.paths[0].aspath.string"
+        contains: "65002"
+    hint: >
+      What to look for: in `show ip bgp` you should see 2.2.2.2/32 in the table
+      with a `>` best-path marker, a next-hop of 10.0.12.2, and an AS_PATH of
+      65002 - proof the prefix crossed the AS boundary from r2. Nothing to fix;
+      just confirm the path is there.

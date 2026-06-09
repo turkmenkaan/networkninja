@@ -1,0 +1,13 @@
+id: bgp-autonomous-systems
+type: lesson
+title: "Autonomous Systems & ASNs"
+summary: "What an autonomous system is, how AS numbers are allocated, and the difference between public and private 16- and 32-bit ASNs."
+path: bgp-fundamentals
+module: foundations
+difficulty: beginner
+estimated_minutes: 12
+prerequisites:
+  - bgp-why-bgp-exists
+tags: [bgp, fundamentals, asn]
+status: published
+version: 1
