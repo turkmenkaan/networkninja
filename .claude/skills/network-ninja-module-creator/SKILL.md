@@ -160,6 +160,11 @@ runtime:                      # ignored in Tier 1; consumed by the Tier 2 runner
   `configs/daemons:/etc/frr/daemons`.
 - **eBGP peers on interface addresses.** Loopback peering needs an IGP underlay (OSPF) and
   belongs in iBGP modules; don't introduce it before then.
+- **eBGP route exchange needs `no bgp ebgp-requires-policy`.** FRR enforces RFC 8212 by
+  default (even under `frr defaults traditional`): an eBGP peer with no in/out policy has its
+  routes filtered and shows `(Policy)` in `show ip bgp summary` instead of a prefix count. Any
+  lab where routes must flow over eBGP needs `no bgp ebgp-requires-policy` under `router bgp`.
+  Teach real policy / RFC 8212 in the route-filtering module.
 - Topology `name:` sets container names: `clab-<name>-<node>` (e.g. `clab-bgp-ebgp-peering-r1`).
 - Convention used so far: r1=AS 65001 (eth1 .1, lo 1.1.1.1/32), r2=AS 65002 (eth1 .2,
   lo 2.2.2.2/32), link subnet 10.0.12.0/24. Extend the pattern consistently for more nodes.

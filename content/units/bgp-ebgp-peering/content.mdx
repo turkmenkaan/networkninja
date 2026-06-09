@@ -49,12 +49,15 @@ Enter configuration mode and start a BGP process in **AS 65001**, then point it 
 ```
 r1# configure terminal
 r1(config)# router bgp 65001
+r1(config-router)# no bgp ebgp-requires-policy
 r1(config-router)# neighbor 10.0.12.2 remote-as 65002
 r1(config-router)# end
 r1# write memory
 ```
 
 Because the neighbor's AS (65002) is **different** from our own (65001), this is an **eBGP** session.
+
+> The `no bgp ebgp-requires-policy` line turns off FRR's default RFC 8212 enforcement, which otherwise refuses to exchange routes on an eBGP session that has no routing policy (you'd see `(Policy)` in `show ip bgp summary`). It keeps these fundamentals labs simple; you'll learn real policy in the Route Filtering module.
 
 ## Step 3: Configure eBGP on r2
 
@@ -69,6 +72,7 @@ Mirror the configuration: `r2` is in **AS 65002** and its neighbor `r1` is in **
 ```
 r2# configure terminal
 r2(config)# router bgp 65002
+r2(config-router)# no bgp ebgp-requires-policy
 r2(config-router)# neighbor 10.0.12.1 remote-as 65001
 r2(config-router)# end
 r2# write memory

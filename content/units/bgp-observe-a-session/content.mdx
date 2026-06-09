@@ -53,6 +53,8 @@ Read it line by line:
 
 > What you just read: the session reached **Established** and is exchanging exactly one route. That single line ties directly back to the FSM you learned: Established is the final state, and only in Established do routers exchange Update messages.
 
+> **Why not `(Policy)`?** By default FRR refuses to exchange routes on an eBGP session that has no routing policy (RFC 8212), and shows `(Policy)` in this column instead of a count. This lab's configs include `no bgp ebgp-requires-policy` to turn that off so you can watch real routes flow. You'll meet policy and RFC 8212 properly in the Route Filtering module.
+
 ## Step 2: The neighbor in depth: FSM, timers, capabilities, counters
 
 Now zoom in on the peer. This is where all the theory becomes concrete:
