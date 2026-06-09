@@ -42,6 +42,12 @@ export interface UnitMeta {
 export interface Objective {
   id: string;
   description: string;
+  /**
+   * The human-facing command the learner actually runs (a full
+   * `docker exec ... vtysh -c '...'`, non-JSON). Shown in the Tier-1 checklist.
+   * The `check` below stays JSON + assert for the Tier-2 auto-grader.
+   */
+  display_command?: string;
   hint?: string;
   check?: {
     node?: string;

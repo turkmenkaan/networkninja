@@ -3,10 +3,12 @@
 /**
  * Lab self-verify checklist (Tier 1).
  *
- * Each objective shows its description, the read-only verification command in
- * mono (the same command Tier 2 will run to auto-grade), and a learner-driven
- * checkbox persisted via the progress store. An optional hint is revealed on
- * demand. Checkbox state is purely local self-assessment — no execution here.
+ * Each objective shows its description, the actual command the learner runs
+ * (`display_command` — a full `docker exec ... vtysh -c '...'`), and a
+ * learner-driven checkbox persisted via the progress store. An optional hint is
+ * revealed on demand. Checkbox state is purely local self-assessment — no
+ * execution here. The JSON `check` in tasks.yaml is for the Tier-2 auto-grader,
+ * not shown to the learner.
  */
 import { useState } from "react";
 import type { Objective } from "@/lib/content/types";
@@ -38,8 +40,9 @@ export function ObjectivesChecklist({
         </span>
       </div>
       <p className="mb-5 text-sm text-paper-muted">
-        Run each read-only check on the live lab and tick it off. These are the
-        exact commands the auto-grader will run later.
+        Run each command against your running lab, confirm what you see, and tick
+        it off. Self-assessed for now; a hosted auto-grader will check these for
+        you later.
       </p>
 
       <ul className="space-y-3">
@@ -68,8 +71,9 @@ function ObjectiveRow({
   onToggle: (v: boolean) => void;
 }) {
   const [showHint, setShowHint] = useState(false);
-  const cmd = objective.check?.command;
-  const node = objective.check?.node;
+  // Show the learner-facing docker exec command; fall back to the raw check
+  // command only if an objective hasn't defined one.
+  const cmd = objective.display_command ?? objective.check?.command;
 
   return (
     <li
@@ -103,7 +107,7 @@ function ObjectiveRow({
 
           {cmd && (
             <div className="mt-2.5 overflow-x-auto rounded-lg border border-ink-line bg-ink-inset px-3 py-2 font-mono text-[0.78rem] text-paper-muted">
-              {node && <span className="select-none text-blade-dim">{node}$ </span>}
+              <span className="select-none text-blade-dim">$ </span>
               <span className="text-paper">{cmd}</span>
             </div>
           )}

@@ -190,7 +190,10 @@ as a self-verify checklist; in Tier 2 the identical file is the auto-grader.
 objectives:
   - id: ebgp-session-established
     description: "The eBGP session from r1 to r2 (10.0.12.2) reaches Established."
-    check:
+    # display_command = what the LEARNER runs (full docker exec, human-readable
+    # output). The Tier-1 checklist shows this, NOT the JSON `check` below.
+    display_command: "docker exec -it clab-<lab-name>-r1 vtysh -c 'show ip bgp summary'"
+    check:                                  # JSON + assert for the Tier-2 auto-grader
       node: r1
       command: "vtysh -c 'show ip bgp summary json'"
       parse: json
@@ -199,6 +202,11 @@ objectives:
         equals: "Established"
     hint: "eBGP peers are in different ASes; remote-as must match the OTHER router's AS."
 ```
+
+Every objective needs **both**: a `display_command` (the real `docker exec ... vtysh -c '...'`
+the learner runs, matching the lab's deploy/exec instructions, no `json`) and a `check` (the
+`json` command + `assert` the future auto-grader runs). The learner-facing UI shows only the
+`display_command`.
 
 **FRR BGP JSON paths (schema-derived; verify on a real deploy):**
 - Session state: `show ip bgp summary json` → `$.ipv4Unicast.peers['<peer-ip>'].state` == `"Established"`.

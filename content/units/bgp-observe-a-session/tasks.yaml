@@ -9,6 +9,9 @@
 objectives:
   - id: session-established
     description: "The eBGP session from r1 to r2 (10.0.12.2) is Established and ready to observe."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-observe-a-session-r1 vtysh -c 'show ip bgp summary'"
     check:
       node: r1
       command: "vtysh -c 'show ip bgp summary json'"
@@ -25,6 +28,7 @@ objectives:
 
   - id: learned-peer-loopback
     description: "r1 has learned r2's loopback 2.2.2.2/32 over BGP, with AS_PATH 65002."
+    display_command: "docker exec -it clab-bgp-observe-a-session-r1 vtysh -c 'show ip bgp 2.2.2.2/32'"
     check:
       node: r1
       command: "vtysh -c 'show ip bgp 2.2.2.2/32 json'"
