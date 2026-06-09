@@ -163,6 +163,13 @@ export async function Mdx({ source }: { source: string }) {
       source={source}
       components={components}
       options={{
+        // Our MDX is trusted, git-authored curriculum content (never user
+        // input). next-mdx-remote v6 blocks JS expressions by default; we
+        // re-enable them because diagram components take expression props
+        // (e.g. nodes={[...]}, caption={<>...</>}). blockDangerousJS stays ON,
+        // so eval/Function/process/require remain blocked.
+        blockJS: false,
+        blockDangerousJS: true,
         mdxOptions: {
           remarkPlugins: [remarkGfm],
           rehypePlugins: [
