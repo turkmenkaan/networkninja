@@ -144,6 +144,11 @@ runtime:                      # ignored in Tier 1; consumed by the Tier 2 runner
 ## 4. FRR & Containerlab conventions
 
 - Image: **`frrouting/frr:v8.4.1`** (pinned, for reproducibility). `kind: linux`.
+  **Verify any image tag actually exists before pinning it** — check the registry, e.g. the
+  Docker Hub tags API `https://hub.docker.com/v2/repositories/frrouting/frr/tags/`. Never
+  invent a plausible-looking version: `frrouting/frr` tops out at `v8.4.1` (note the `v`
+  prefix), and a made-up tag like `9.1.0` fails `containerlab deploy` with `not found`. Same
+  rule for any external dependency (package versions, etc.): confirm against the real source.
 - **`frr defaults traditional`**: keeps `bgp default ipv4-unicast` ON, so a single
   `neighbor <ip> remote-as <asn>` (and `network <prefix>`) auto-activates IPv4-unicast. This
   keeps beginner configs short. (Later modules may move to the `datacenter` profile with
@@ -210,6 +215,11 @@ back to plain Docker (two `frrouting/frr:v8.4.1` containers on a user bridge) to
 same things. If no runtime is reachable (e.g. a restricted sandbox), do static + schema review
 and document what's blocked plus the exact commands to finish on a Linux+Docker host. Always
 tear down created containers/networks. Write results to `docs/verification/`.
+
+**Honesty rule:** never label configs or `tasks.yaml` assertions "confirmed" or "verified"
+unless they were actually run through a live FRR and observed. Until a real deploy passes,
+they are *schema-derived* — say exactly that (in the `tasks.yaml` comments and the report) and
+flag them as needing a real run. A clean static/schema review is **PARTIAL**, not **PASS**.
 
 ```bash
 cd content/units/<unit-id>
