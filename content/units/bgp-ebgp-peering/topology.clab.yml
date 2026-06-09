@@ -5,13 +5,13 @@ topology:
   nodes:
     r1:
       kind: linux
-      image: frrouting/frr:9.1.0
+      image: frrouting/frr:v8.4.1
       binds:
         - configs/r1/frr.conf:/etc/frr/frr.conf
         - configs/daemons:/etc/frr/daemons
     r2:
       kind: linux
-      image: frrouting/frr:9.1.0
+      image: frrouting/frr:v8.4.1
       binds:
         - configs/r2/frr.conf:/etc/frr/frr.conf
         - configs/daemons:/etc/frr/daemons

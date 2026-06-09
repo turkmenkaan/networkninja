@@ -38,7 +38,7 @@ review against FRR's known-stable BGP JSON output**.
 configs, starting + solution configs, `tasks.yaml`, `content.mdx`, `solution.mdx`).
 The two asserted commands were validated against FRR's BGP JSON emitters, whose
 schema for these two commands has been stable across the 7.x–9.x line and matches
-9.1.0:
+8.4.1:
 
 - `show ip bgp summary json` → `bgp_show_summary()` in `bgpd/bgp_vty.c`.
 - `show ip bgp <prefix> json` → `bgp_show_route()` / `route_vty_out_detail()` in
@@ -54,7 +54,7 @@ quoted scalars — no structural issues found.
 ## 3. FRR config sanity (both labs)
 
 Common: r1 = AS 65001 (eth1 10.0.12.1/24, lo 1.1.1.1/32); r2 = AS 65002
-(eth1 10.0.12.2/24, lo 2.2.2.2/32); image `frrouting/frr:9.1.0`;
+(eth1 10.0.12.2/24, lo 2.2.2.2/32); image `frrouting/frr:v8.4.1`;
 `frr defaults traditional`; `daemons` enables `zebra=yes`, `bgpd=yes` (all others
 off) with `vtysh_enable=yes`. Topologies wire `r1:eth1 <-> r2:eth1`.
 
@@ -82,7 +82,7 @@ No FRR config changes were required in either lab.
 Command: `vtysh -c 'show ip bgp summary json'` (on r1, after applying the SOLUTION).
 Assertion: `$.ipv4Unicast.peers['10.0.12.2'].state == "Established"`.
 
-Expected FRR 9.1.0 JSON shape (abridged):
+Expected FRR 8.4.1 JSON shape (abridged):
 
 ```json
 {
@@ -130,7 +130,7 @@ few seconds and `pfxRcd` becomes `1` once `2.2.2.2/32` is received.)
 Command: `vtysh -c 'show ip bgp 2.2.2.2/32 json'` (on r1).
 Assertion (as authored): `$.paths[0].aspath.string` **contains** `"65002"`.
 
-Expected FRR 9.1.0 JSON shape (abridged, from `route_vty_out_detail`):
+Expected FRR 8.4.1 JSON shape (abridged, from `route_vty_out_detail`):
 
 ```json
 {
@@ -179,7 +179,7 @@ unnecessary).
 1. **`content/units/bgp-observe-a-session/tasks.yaml`** — updated the YAML comment on
    the `learned-peer-loopback` objective: removed the "confirm during deferred docker
    pass / fall back to `$.paths` existing" UNCERTAIN hedge and replaced it with a note
-   that the `$.paths[0].aspath.string` path is **confirmed** against FRR 9.1.0's
+   that the `$.paths[0].aspath.string` path is **confirmed** against FRR 8.4.1's
    `bgp_route.c` schema, and why `contains` is the robust operator. The `assert` block
    itself was already correct and is **unchanged**.
 2. **No other assertion changes** — the `bgp-ebgp-peering` summary-state path and the
@@ -217,7 +217,7 @@ containerlab destroy -t topology.clab.yml
 ```
 
 Path B (plain Docker fallback, if containerlab can't deploy): create a user bridge
-network for `10.0.12.0/24`, run two `frrouting/frr:9.1.0` containers attached to it,
+network for `10.0.12.0/24`, run two `frrouting/frr:v8.4.1` containers attached to it,
 apply the same FRR configs (interface name may be `eth0` on the bridge instead of
 `eth1` — adapt the `interface` stanza), then run the same three `vtysh -c '... json'`
 commands and assert the same paths. Tear down the containers and network afterward.
@@ -247,6 +247,6 @@ operations were performed. The `web/` directory was not touched.
 | `bgp-observe-a-session` (on boot) | Yes | Established | `2.2.2.2/32` via 65002 | summary-state + `aspath.string` CONFIRMED | static PASS / live PENDING |
 
 **Overall: PARTIAL** — both labs are statically sound and every asserted JSON path is
-confirmed correct against FRR 9.1.0's schema; the only edit was de-flagging the
+confirmed correct against FRR 8.4.1's schema; the only edit was de-flagging the
 previously-uncertain AS_PATH comment. Full PASS requires running section 6 on a host
 where Docker/containerlab is reachable.

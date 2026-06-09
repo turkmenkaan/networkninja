@@ -29,7 +29,7 @@ objectives:
       node: r1
       command: "vtysh -c 'show ip bgp 2.2.2.2/32 json'"
       parse: json
-      # JSON path CONFIRMED against FRR 9.1.0's BGP JSON schema (bgp_route.c,
+      # JSON path derived from FRR's BGP JSON schema (bgp_route.c,
       # route_vty_out_detail). For `show ip bgp <prefix> json`, FRR returns a
       # top-level object with a "paths" array (ordered best-path first); each
       # path has an "aspath" object whose "string" is the AS_PATH (here exactly

@@ -143,7 +143,7 @@ runtime:                      # ignored in Tier 1; consumed by the Tier 2 runner
 
 ## 4. FRR & Containerlab conventions
 
-- Image: **`frrouting/frr:9.1.0`** (pinned, for reproducibility). `kind: linux`.
+- Image: **`frrouting/frr:v8.4.1`** (pinned, for reproducibility). `kind: linux`.
 - **`frr defaults traditional`**: keeps `bgp default ipv4-unicast` ON, so a single
   `neighbor <ip> remote-as <asn>` (and `network <prefix>`) auto-activates IPv4-unicast. This
   keeps beginner configs short. (Later modules may move to the `datacenter` profile with
@@ -190,7 +190,7 @@ objectives:
     hint: "eBGP peers are in different ASes; remote-as must match the OTHER router's AS."
 ```
 
-**Confirmed FRR 9.1.0 JSON paths (reuse these):**
+**FRR BGP JSON paths (schema-derived; verify on a real deploy):**
 - Session state: `show ip bgp summary json` → `$.ipv4Unicast.peers['<peer-ip>'].state` == `"Established"`.
 - Learned route + AS_PATH: `show ip bgp <prefix> json` → best-path-first `paths[]` array; each
   path has `aspath.string`. Assert `$.paths[0].aspath.string` **contains** the origin ASN.
@@ -206,7 +206,7 @@ verification pass before relying on it.
 Goal: prove the FRR configs work (session Established, expected routes learned) and that every
 `tasks.yaml` JSON path matches real output. Containerlab needs Linux netns/veth; it works
 inside Docker Desktop's Linux VM but not natively on macOS. If Containerlab can't run, fall
-back to plain Docker (two `frrouting/frr:9.1.0` containers on a user bridge) to validate the
+back to plain Docker (two `frrouting/frr:v8.4.1` containers on a user bridge) to validate the
 same things. If no runtime is reachable (e.g. a restricted sandbox), do static + schema review
 and document what's blocked plus the exact commands to finish on a Linux+Docker host. Always
 tear down created containers/networks. Write results to `docs/verification/`.
