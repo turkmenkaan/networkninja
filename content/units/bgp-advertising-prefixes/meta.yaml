@@ -1,0 +1,12 @@
+id: bgp-advertising-prefixes
+type: lesson
+title: "Getting Prefixes Into BGP: network vs redistribute"
+summary: "BGP advertises nothing on its own; learn the two ways to originate your prefixes into the BGP table and when to reach for each."
+path: bgp-fundamentals
+module: ebgp-fundamentals
+difficulty: beginner
+estimated_minutes: 12
+prerequisites: [bgp-ebgp-vs-ibgp]
+tags: [bgp, ebgp, advertising, network-statement, redistribution]
+status: published
+version: 1

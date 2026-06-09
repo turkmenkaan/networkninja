@@ -25,11 +25,11 @@ modules:
   - id: ebgp-fundamentals
     title: "eBGP Fundamentals"
     units:
-      - { id: bgp-ebgp-vs-ibgp,            status: planned }
-      - { id: bgp-advertising-prefixes,    status: planned }
-      - { id: bgp-ebgp-peering,            status: published }   # ← first built unit
-      - { id: bgp-advertising-routes,      status: planned }
-      - { id: bgp-ebgp-capstone,           status: planned }
+      - { id: bgp-ebgp-vs-ibgp,            status: published }
+      - { id: bgp-advertising-prefixes,    status: published }
+      - { id: bgp-ebgp-peering,            status: published }
+      - { id: bgp-advertising-routes,      status: published }
+      - { id: bgp-ebgp-capstone,           status: published }
 
   - id: ibgp-fundamentals
     title: "iBGP Fundamentals"

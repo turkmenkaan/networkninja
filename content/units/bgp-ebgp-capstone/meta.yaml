@@ -1,0 +1,23 @@
+id: bgp-ebgp-capstone
+type: lab
+mode: challenge
+title: "Capstone: Three Autonomous Systems"
+summary: "Build eBGP across three ASes from a blank slate so every AS reaches every other through a transit AS in the middle."
+path: bgp-fundamentals
+module: ebgp-fundamentals
+difficulty: intermediate
+estimated_minutes: 35
+prerequisites:
+  - lab-environment-setup
+  - bgp-advertising-routes
+tags: [bgp, ebgp, capstone, challenge, frr]
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 3
+  est_ram_mb: 768
+  images: [frrouting/frr]
+  est_boot_seconds: 25
+
+status: published
+version: 1

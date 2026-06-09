@@ -1,0 +1,50 @@
+# Objectives + verification for bgp-advertising-routes.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY NOTE: the JSON paths below are derived from FRR's BGP JSON schema
+# (bgp_route.c, route_vty_out_detail) - `show ip bgp <prefix> json` returns a
+# top-level object with a "paths" array (best-path first), each path carrying an
+# "aspath" object whose "string" is the AS_PATH. These have NOT yet been run on a
+# live FRR for this lab; confirm them on a real deploy before relying on them.
+
+objectives:
+  - id: r2-learns-r1-loopback
+    description: "r2 has learned r1's loopback 1.1.1.1/32 over BGP, with AS_PATH 65001."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-advertising-routes-r2 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      # `contains` (not `equals`) keeps this robust to any future AS_PATH
+      # prepending and to whitespace/ordering in the string.
+      assert:
+        path: "$.paths[0].aspath.string"
+        contains: "65001"
+    hint: >
+      What to look for: in `show ip bgp 1.1.1.1/32` on r2 you should see the
+      prefix with a `>` best-path marker, a next-hop of 10.0.12.1 (r1's interface
+      address, since it's the advertising neighbor on an eBGP session), and an
+      AS_PATH of 65001 (the single origin ASN). If the prefix is missing, check
+      that r1 actually has `network 1.1.1.1/32` under `router bgp 65001` and that
+      the session is Established.
+
+  - id: r1-learns-r2-loopback
+    description: "r1 has learned r2's loopback 2.2.2.2/32 over BGP, with AS_PATH 65002."
+    display_command: "docker exec -it clab-bgp-advertising-routes-r1 vtysh -c 'show ip bgp 2.2.2.2/32'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp 2.2.2.2/32 json'"
+      parse: json
+      assert:
+        path: "$.paths[0].aspath.string"
+        contains: "65002"
+    hint: >
+      What to look for: in `show ip bgp 2.2.2.2/32` on r1 you should see the
+      prefix with a `>` best-path marker, a next-hop of 10.0.12.2 (r2's interface
+      address, the advertising neighbor on eBGP), and an AS_PATH of 65002 (the
+      single origin ASN). If it's missing, confirm r2 has `network 2.2.2.2/32`
+      under `router bgp 65002` and that the session is Established.

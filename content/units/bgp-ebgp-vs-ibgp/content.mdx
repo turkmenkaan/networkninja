@@ -1,0 +1,80 @@
+# eBGP vs iBGP: One Protocol, Two Rule Sets
+
+Here's a fact that trips up almost everyone the first time: there is only **one** BGP. There is no separate "external BGP" daemon and "internal BGP" daemon. Yet you'll constantly hear the terms **eBGP** and **iBGP**, and they really do behave differently. So what decides which set of rules a session follows?
+
+Just one thing: **the ASNs of the two peers.**
+
+- If the two routers sit in **different** autonomous systems, the session is **eBGP** (external).
+- If the two routers sit in the **same** autonomous system, the session is **iBGP** (internal).
+
+That's the entire distinction. You don't flip a mode switch; BGP looks at the `remote-as` you configured, compares it to its own ASN, and quietly picks a rule set. Same protocol, same messages, same state machine, two different sets of behaviors layered on top.
+
+<ASTopology
+  eyebrow="The two flavors, side by side"
+  nodeShape="router"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "iBGP peer of r2", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65001", sublabel: "iBGP peer of r1", col: 1, row: 0 },
+    { id: "r3", name: "r3", asn: "AS 65002", sublabel: "eBGP edge", col: 2, row: 0 },
+  ]}
+  links={[
+    { from: "r1", to: "r2", label: "iBGP" },
+    { from: "r2", to: "r3", label: "eBGP" },
+  ]}
+  legend="Same ASN = iBGP, different ASN = eBGP"
+  caption={<>r1 and r2 share AS 65001, so the session between them is <strong>iBGP</strong>. r2 to r3 crosses into AS 65002, so that session is <strong>eBGP</strong>. The ASNs alone decide.</>}
+/>
+
+## How eBGP behaves
+
+An eBGP session crosses a boundary between two organizations, so it's built for routers that **face each other directly**. A few defaults follow from that:
+
+- **It usually runs between directly-connected routers.** The default TTL on eBGP packets is **1**, so a peer one hop away is reachable but anything further is not. If you genuinely need a multi-hop eBGP session you must say so explicitly with `ebgp-multihop`.
+- **It rewrites the AS_PATH.** When a router advertises a route over eBGP, it **prepends its own ASN** to the front of the AS_PATH. This is how the path grows hop by hop across the internet, and it's the raw material for loop prevention.
+- **It rewrites NEXT_HOP.** The advertising router sets NEXT_HOP to **itself**, so the neighbor knows exactly where to send traffic for that prefix.
+- **Administrative distance 20.** eBGP routes are trusted highly: an AD of 20 beats almost every IGP, so a route learned from a real external neighbor wins.
+
+## How iBGP behaves
+
+An iBGP session lives **inside** a single AS. Its whole job is to carry routes (especially external routes learned at the edge) across your own network so every internal router knows how to reach the outside world. Because both peers share an ASN, several eBGP behaviors are deliberately switched off:
+
+- **AS_PATH is not changed.** You're still in the same AS, so there's nothing to prepend. The path stays exactly as it arrived.
+- **NEXT_HOP is not changed by default.** This is the classic gotcha. When r2 passes an external route to r1 over iBGP, it leaves NEXT_HOP as the **original external** next-hop, the address of the router in the *other* AS. r1 may have no route to that address and quietly fail to install the prefix. The fix is `next-hop-self`, which you'll meet in the iBGP module.
+- **Administrative distance 200.** iBGP routes are trusted *less* than eBGP and less than IGP routes, which is why an internally learned BGP path won't override your IGP's own reachability.
+
+## Loop prevention works differently
+
+eBGP catches loops with the AS_PATH: if a router receives a route whose AS_PATH **already contains its own ASN**, it rejects it. Simple and bulletproof.
+
+But inside one AS, **every router shares the same ASN**, so that trick is useless. iBGP can't use AS_PATH to spot a loop. Instead it uses the **iBGP split-horizon rule**:
+
+> A route learned from one iBGP peer is **never re-advertised** to another iBGP peer.
+
+That single rule prevents internal loops, but it has a big consequence. If r1 won't pass an iBGP-learned route along to r3, then r3 has to hear it from the original source directly. So **every iBGP speaker must peer with every other iBGP speaker**: a full mesh. For *n* routers that's n(n-1)/2 sessions, which gets painful fast. Route reflectors and confederations exist to relax this, and the whole iBGP module is devoted to it.
+
+## Why the two are different at all
+
+The split makes sense once you remember **what each session is for**:
+
+- **eBGP crosses a trust boundary** between separate organizations. You filter, you apply policy, you don't blindly believe a neighbor, and you rewrite path and next-hop because the route is genuinely leaving your control.
+- **iBGP stays inside your own trusted network.** Its job is purely to **distribute** external routes across your AS so every internal router can forward toward outside destinations. No trust boundary, no policy negotiation, no AS_PATH growth.
+
+## One more practical difference: where you peer
+
+- **eBGP peers on interface addresses.** Since the routers are directly connected, you point each neighbor at the other's physical interface IP.
+- **iBGP usually peers on loopbacks.** A loopback never goes down as long as *any* path to the router exists, so an iBGP session survives a link failure if another internal path remains. That resilience needs an **IGP underneath** to make the loopbacks reachable. We'll set that up in the iBGP module.
+
+## eBGP vs iBGP at a glance
+
+| Behavior | eBGP | iBGP |
+|----------|------|------|
+| Peer ASNs | Different ASes | Same AS |
+| AS_PATH on advertise | Prepends own ASN | Not changed |
+| NEXT_HOP | Rewritten to self | Not changed by default |
+| Administrative distance | 20 | 200 |
+| Loop prevention | AS_PATH (reject own ASN) | Split-horizon (no re-advertise to iBGP peers) -> full mesh |
+| Typical peering address | Interface (directly connected) | Loopback (needs an IGP) |
+
+## What's next
+
+You now know the single rule that splits BGP into two flavors, and the behaviors that follow from it: AS_PATH, next-hop, admin distance, loop prevention, and where you peer. Next, in **`bgp-advertising-prefixes`**, we get concrete about how a prefix actually *enters* BGP in the first place: the `network` statement versus redistribution, and what really ends up in the table.

@@ -1,0 +1,24 @@
+id: bgp-advertising-routes
+type: lab
+title: "Advertising Routes Over eBGP"
+summary: "Originate each router's loopback into BGP with a network statement and watch the prefix cross the eBGP session."
+path: bgp-fundamentals
+module: ebgp-fundamentals
+difficulty: beginner
+estimated_minutes: 25
+prerequisites:
+  - lab-environment-setup
+  - bgp-ebgp-peering
+  - bgp-advertising-prefixes
+tags: [bgp, ebgp, advertising, frr, network-statement]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 2
+  est_ram_mb: 512
+  images: [frrouting/frr]
+  est_boot_seconds: 20
+
+status: published
+version: 1

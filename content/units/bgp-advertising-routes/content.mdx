@@ -1,0 +1,123 @@
+# Advertising Routes Over eBGP
+
+Last lab you got two routers talking: `r1` (AS 65001) and `r2` (AS 65002) shook hands and the eBGP session went **Established**. But a handshake isn't a conversation. The session is up and *nothing is flowing across it*, because neither router has put a single prefix into BGP yet.
+
+This lab fixes that. You'll **originate** each router's loopback into BGP with one line, a `network` statement, and then watch that prefix travel across the AS boundary and show up in the other router's BGP table, complete with an AS_PATH. That's the moment BGP stops being a handshake and starts being routing.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "lo 2.2.2.2/32", col: 1, row: 0 },
+  ]}
+  links={[{ from: "r1", to: "r2" }]}
+  legend="eBGP over 10.0.12.0/24 (r1 .1, r2 .2, on eth1)"
+  caption={<>Same two routers as the peering lab, peered over their eth1 link. The eBGP session boots <strong>already Established</strong>. Your job is to advertise each loopback so a real prefix and AS_PATH appear on the far side.</>}
+/>
+
+The interface addressing **and** the eBGP session are already configured. What's missing is the advertising: that's the part you'll build.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots both routers with the session already coming up. Drop into `r1`'s FRR shell:
+
+```bash
+docker exec -it clab-bgp-advertising-routes-r1 vtysh
+```
+
+## Step 1: Confirm the session, and the empty table
+
+On `r1`, check that the session is up and that no prefixes are being exchanged yet:
+
+```
+r1# show ip bgp summary
+r1# show ip bgp
+```
+
+The neighbor `10.0.12.2` should read **`Established`** (an uptime in the Up/Down column). The `show ip bgp` table should be empty: the session works, but there's nothing to advertise yet. That's the starting line.
+
+## Step 2: Advertise r1's loopback
+
+Still on `r1`, enter configuration mode and originate the loopback `1.1.1.1/32` into BGP under the existing `router bgp 65001`:
+
+```
+r1# configure terminal
+r1(config)# router bgp 65001
+r1(config-router)# network 1.1.1.1/32
+r1(config-router)# end
+r1# write memory
+```
+
+The `network` statement tells BGP: "I own this prefix, advertise it." FRR will only originate it if a **matching route exists** in the routing table, and `1.1.1.1/32` does, because it's the address on interface `lo`. The prefix and length must match **exactly**.
+
+## Step 3: Advertise r2's loopback
+
+Open `r2` in another terminal and mirror the configuration with *its* loopback:
+
+```bash
+docker exec -it clab-bgp-advertising-routes-r2 vtysh
+```
+
+```
+r2# configure terminal
+r2(config)# router bgp 65002
+r2(config-router)# network 2.2.2.2/32
+r2(config-router)# end
+r2# write memory
+```
+
+## Step 4: Verify the routes crossed the boundary
+
+Back on `r1`, look at the full BGP table and then zoom in on the prefix you expect from `r2`:
+
+```
+r1# show ip bgp
+r1# show ip bgp 2.2.2.2/32
+```
+
+You should now see `2.2.2.2/32` in the table with a `>` **best-path marker**. Look at two fields in particular:
+
+- **NEXT_HOP** is `10.0.12.2`, `r2`'s interface address. On an eBGP session the advertising neighbor sets itself as the next hop.
+- **AS_PATH** is `65002`, a single ASN. `r2` **prepended its own AS** as the prefix left it, so the path is just the one origin AS. That single number is proof the route crossed the AS boundary.
+
+Now do the mirror check on `r2`:
+
+```
+r2# show ip bgp 1.1.1.1/32
+```
+
+`r2` should see `1.1.1.1/32` with a next-hop of `10.0.12.1` and an AS_PATH of `65001`.
+
+✅ **Objective 1:** `r2` has learned `1.1.1.1/32` from `r1`, with AS_PATH `65001`.
+
+✅ **Objective 2:** `r1` has learned `2.2.2.2/32` from `r2`, with AS_PATH `65002`.
+
+## Troubleshooting
+
+- **Prefix not showing up on the far side?** The most common cause is a mismatch in the `network` statement. The prefix **and length must match exactly**: `network 1.1.1.1/32` originates the loopback, but `network 1.1.1.0/24` would not, because no `1.1.1.0/24` route exists locally. Re-check with `show ip bgp` on the *advertising* router first; if the prefix isn't even in its own table, the `network` line didn't take.
+- **Nothing in any table, and the neighbor isn't `Established`?** Routes can only flow over an up session. Confirm `show ip bgp summary` shows the neighbor as Established before chasing the advertisement.
+- **Session up but the summary shows `(Policy)` instead of a prefix count?** That's FRR's RFC 8212 filtering. This lab already sets `no bgp ebgp-requires-policy` under `router bgp`, which is exactly why your routes are allowed to flow; if you removed it, the eBGP routes would be filtered.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- A **`network`** statement under `router bgp` **originates** a prefix into BGP, but only if a matching route already exists in the routing table, and the prefix/length must match exactly.
+- As a route leaves an AS over **eBGP**, the advertising router **prepends its own ASN** to the AS_PATH, so the receiver sees the origin AS in the path.
+- On eBGP the advertising neighbor becomes the **NEXT_HOP** for the routes it sends.
+- A `>` in `show ip bgp` marks the **best path** the router has selected for that prefix.
+
+**Next:** prove you can build the whole thing, session and advertisements, from a blank slate in the `bgp-ebgp-capstone` challenge.

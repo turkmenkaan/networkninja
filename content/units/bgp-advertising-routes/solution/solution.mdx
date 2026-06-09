@@ -1,0 +1,42 @@
+# Solution: Advertising Routes Over eBGP
+
+The lab is complete when each router has **originated its loopback** into BGP and the prefix appears in the *other* router's BGP table. The eBGP session was already configured, so the only thing to add is a single `network` statement per router.
+
+## r1 (AS 65001)
+
+```
+router bgp 65001
+ network 1.1.1.1/32
+```
+
+## r2 (AS 65002)
+
+```
+router bgp 65002
+ network 2.2.2.2/32
+```
+
+The complete resulting configs are in `solution/r1/frr.conf` and `solution/r2/frr.conf`.
+
+## Why it works
+
+- The **`network`** statement originates a prefix into BGP, but FRR only advertises it if a **matching route exists** in the routing table. Each loopback (`1.1.1.1/32` on r1, `2.2.2.2/32` on r2) is a connected route on interface `lo`, so the prefix qualifies. The prefix and mask length must match exactly.
+- As each prefix leaves its AS over the **eBGP** session, the advertising router **prepends its own ASN** to the AS_PATH. So r1's loopback arrives at r2 with AS_PATH `65001`, and r2's loopback arrives at r1 with AS_PATH `65002`, a single origin ASN in each case.
+- On eBGP the advertising router sets **itself** as the NEXT_HOP, so r2 reaches `1.1.1.1/32` via `10.0.12.1` and r1 reaches `2.2.2.2/32` via `10.0.12.2`.
+- `no bgp ebgp-requires-policy` (pre-set, since the session was given) disables FRR's RFC 8212 enforcement, which would otherwise filter eBGP routes that have no policy and show `(Policy)` instead of a prefix count.
+
+## Verifying
+
+```
+r2# show ip bgp 1.1.1.1/32 json
+r1# show ip bgp 2.2.2.2/32 json
+```
+
+The checks assert:
+
+```
+(on r2) $.paths[0].aspath.string contains "65001"
+(on r1) $.paths[0].aspath.string contains "65002"
+```
+
+Each proves the loopback was originated on one router and crossed the AS boundary to the other.

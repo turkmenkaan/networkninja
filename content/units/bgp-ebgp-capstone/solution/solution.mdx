@@ -1,0 +1,79 @@
+# Solution: Three Autonomous Systems
+
+The network is complete when both eBGP sessions are **Established** and every AS can reach every other AS's loopback, including r1 and r3 reaching each other *through* AS 65002. Each router needs a BGP process in its own AS, an eBGP neighbor for each link, its loopback advertised with `network`, and `no bgp ebgp-requires-policy`.
+
+## r1 (AS 65001)
+
+One neighbor (r2), one loopback to advertise:
+
+```
+router bgp 65001
+ no bgp ebgp-requires-policy
+ neighbor 10.0.12.2 remote-as 65002
+ network 1.1.1.1/32
+```
+
+## r2 (AS 65002, transit)
+
+Two neighbors, one per link, plus its own loopback:
+
+```
+router bgp 65002
+ no bgp ebgp-requires-policy
+ neighbor 10.0.12.1 remote-as 65001
+ neighbor 10.0.23.3 remote-as 65003
+ network 2.2.2.2/32
+```
+
+## r3 (AS 65003)
+
+The mirror of r1: one neighbor (r2), one loopback:
+
+```
+router bgp 65003
+ no bgp ebgp-requires-policy
+ neighbor 10.0.23.2 remote-as 65002
+ network 3.3.3.3/32
+```
+
+The complete resulting configs are in `solution/r1/frr.conf`, `solution/r2/frr.conf`, and `solution/r3/frr.conf`.
+
+## Why transit works
+
+r2 never needs special "transit" configuration. It is just an ordinary BGP speaker that happens to have **two** eBGP sessions. The transit behavior falls out of how BGP works by default:
+
+- r3 originates `3.3.3.3/32` (via `network`) and advertises it to r2. r2 installs it as the best path with AS_PATH `65003`.
+- r2 then **re-advertises** that route to its *other* eBGP neighbor, r1. As the route leaves r2 across the AS boundary, r2 **prepends its own AS (65002)** to the AS_PATH. r1 receives `3.3.3.3/32` with AS_PATH `65002 65003`.
+- The exact same thing happens in the other direction: r1 originates `1.1.1.1/32`, r2 prepends 65002, and r3 receives it with AS_PATH `65002 65001`.
+
+That default "re-advertise eBGP routes to my other neighbors" behavior is the whole point of a transit AS. You did not enable it; it is simply on.
+
+## The AS_PATHs prove the transit
+
+The AS_PATH is the receipt for the path the prefix took:
+
+- On r1, `show ip bgp 3.3.3.3/32` shows AS_PATH `65002 65003`: the route came *from* 65002, which got it *from* 65003.
+- On r3, `show ip bgp 1.1.1.1/32` shows AS_PATH `65002 65001`: the mirror image.
+- r2 sees the loopbacks of both neighbors with single-AS paths (`65001` and `65003`), because it is one hop from each.
+
+## Why `no bgp ebgp-requires-policy` everywhere
+
+FRR enforces RFC 8212 by default: an eBGP session with no inbound or outbound policy has its routes filtered, and `show ip bgp summary` shows `(Policy)` for that peer instead of a prefix count. Every router here exchanges routes over eBGP, so every router needs `no bgp ebgp-requires-policy`. Miss it on even one router and a piece of the reachability disappears: for example, if r2 lacks it, neither r1 nor r3 will learn the far-side loopback.
+
+## Verifying
+
+```
+r1# show ip bgp summary json
+r3# show ip bgp summary json
+r1# show ip bgp 3.3.3.3/32 json
+r3# show ip bgp 1.1.1.1/32 json
+```
+
+The checks assert:
+
+```
+r1: $.ipv4Unicast.peers['10.0.12.2'].state == "Established"
+r3: $.ipv4Unicast.peers['10.0.23.2'].state == "Established"
+r1: $.paths[0].aspath.string contains "65002 65003"
+r3: $.paths[0].aspath.string contains "65002 65001"
+```

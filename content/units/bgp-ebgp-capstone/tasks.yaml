@@ -1,0 +1,79 @@
+# Objectives + verification for bgp-ebgp-capstone (CHALLENGE / blank slate).
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY / TO-CONFIRM: the JSON paths below ($.ipv4Unicast.peers['<ip>'].state,
+# $.paths[0].aspath.string) and the exact AS_PATH strings ("65002 65003",
+# "65002 65001") are SCHEMA-DERIVED from FRR's BGP JSON output (bgp_route.c /
+# bgp_show_summary), NOT yet observed on a live deploy. Confirm each path and
+# AS_PATH string on a real `containerlab deploy` before treating them as verified.
+# AS_PATH assertions use `contains` (not `equals`) to stay robust to ordering and
+# any future prepending.
+
+objectives:
+  - id: r1-r2-established
+    description: "The eBGP session from r1 to r2 (10.0.12.2) reaches the Established state."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-ebgp-capstone-r1 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['10.0.12.2'].state"
+        equals: "Established"
+    hint: >
+      Different ASes, so this is eBGP: on r1 the neighbor's remote-as is 65002,
+      on r2 it is 65001. Both ends must be configured. Stuck in Active/Connect
+      means the far side is missing or the AS numbers disagree.
+
+  - id: r2-r3-established
+    description: "The eBGP session from r3 to r2 (10.0.23.2) reaches the Established state."
+    display_command: "docker exec -it clab-bgp-ebgp-capstone-r3 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r3
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['10.0.23.2'].state"
+        equals: "Established"
+    hint: >
+      r2 is the transit AS, so it needs a SECOND neighbor for r3 (10.0.23.3
+      remote-as 65003). On r3, peer with r2's eth2 address 10.0.23.2 remote-as
+      65002.
+
+  - id: r1-reaches-r3
+    description: "r1 has learned r3's loopback 3.3.3.3/32 via transit, with AS_PATH 65002 65003."
+    display_command: "docker exec -it clab-bgp-ebgp-capstone-r1 vtysh -c 'show ip bgp 3.3.3.3/32'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp 3.3.3.3/32 json'"
+      parse: json
+      # `show ip bgp <prefix> json` returns a top-level object with a "paths"
+      # array (best-path first); each path's "aspath.string" is the AS_PATH. As
+      # the prefix crosses r2 (eBGP), r2 prepends its own AS, so r1 sees
+      # "65002 65003". `contains` keeps this robust to whitespace/prepending.
+      assert:
+        path: "$.paths[0].aspath.string"
+        contains: "65002 65003"
+    hint: >
+      For r1 to see 3.3.3.3/32, r3 must `network 3.3.3.3/32` AND r2 must
+      re-advertise it. If r1 shows nothing, check `no bgp ebgp-requires-policy`
+      is set on every router or RFC 8212 filters the eBGP routes.
+
+  - id: r3-reaches-r1
+    description: "r3 has learned r1's loopback 1.1.1.1/32 via transit, with AS_PATH 65002 65001."
+    display_command: "docker exec -it clab-bgp-ebgp-capstone-r3 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r3
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      assert:
+        path: "$.paths[0].aspath.string"
+        contains: "65002 65001"
+    hint: >
+      The mirror of the previous objective: r1 must `network 1.1.1.1/32` and r2
+      re-advertises it toward r3, prepending 65002. The AS_PATH r3 sees is
+      "65002 65001".

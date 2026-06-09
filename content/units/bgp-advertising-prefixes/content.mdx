@@ -1,0 +1,95 @@
+# Getting Prefixes Into BGP: network vs redistribute
+
+Here is a surprise that trips up almost everyone: you can bring an eBGP session all the way to **Established**, and still have *zero* prefixes flowing across it. A healthy session is just a pipe. By default, **BGP advertises nothing of your own**. It will happily relay routes it learned from other neighbors, but your local prefixes (your loopbacks, your customer blocks, your data-center subnets) stay invisible until you **explicitly originate them** into BGP.
+
+There are exactly two mechanisms for that origination: the **`network` statement** and **`redistribute`**. Knowing which one to reach for, and why, is the whole point of this lesson.
+
+## The `network` statement: precise and deliberate
+
+The `network` statement names one prefix and says "advertise exactly this." Under `router bgp`:
+
+```
+router bgp 65001
+ network 1.1.1.1/32
+```
+
+But there is a rule that catches everyone the first time. **`network` does not create a route. It promotes an existing route.** For that line to do anything, a route for `1.1.1.1/32` must *already exist in the router's RIB* (its main routing table), from one of:
+
+- a **connected** interface (e.g. a loopback configured as `1.1.1.1/32`),
+- a **static** route, or
+- an **IGP** (OSPF, IS-IS) that learned it.
+
+If a matching RIB route exists, BGP copies it into the BGP table and starts advertising it. If no such route exists, the `network` statement sits there doing absolutely nothing, silently. No error, no prefix. This is the classic gotcha, and it has a sharp edge: **the prefix and length must match the RIB route exactly.** Writing `network 1.1.0.0/16` when the RIB only holds `1.1.1.1/32` advertises nothing, because there is no `1.1.0.0/16` route to promote.
+
+When BGP originates a prefix this way, it stamps the **origin attribute** as `i` (IGP), the "I deliberately put this here" marker.
+
+## `redistribute`: bulk injection
+
+Sometimes you do not want to type out prefixes one at a time. `redistribute` grabs **every** route from another source and dumps it into BGP in one move:
+
+```
+router bgp 65001
+ redistribute connected
+ redistribute static
+ redistribute ospf
+```
+
+You can redistribute `connected`, `static`, `ospf`, `isis`, `kernel`, and more. It is powerful, and it is blunt. `redistribute connected` will advertise *every* connected subnet on the box, including ones you never meant to expose. That is how networks accidentally leak management subnets or link addresses to the world. For that reason, `redistribute` is almost always paired with a **route-map** that filters down to just what you intend:
+
+```
+ redistribute connected route-map ADVERTISE-ONLY
+```
+
+Routes injected by `redistribute` get the origin attribute `?` (incomplete): BGP is saying "this came from outside, I cannot vouch for where it truly originated."
+
+## Reading the origin code
+
+The origin attribute shows up as a trailing letter on each line of `show ip bgp`, at the end of the **Path** column:
+
+```
+   Network          Next Hop   Metric LocPrf Weight Path
+*> 1.1.1.1/32       0.0.0.0         0         32768 i
+*> 10.20.0.0/24     0.0.0.0         0         32768 ?
+```
+
+- **`i`** : originated by a `network` statement (IGP origin). Clean and deliberate.
+- **`?`** : injected by `redistribute` (incomplete origin).
+- **`e`** : a legacy code from the old EGP protocol. You will essentially never see it in modern networks, but it rounds out the set.
+
+A quick glance at that trailing letter tells you *how* a prefix got into BGP.
+
+## network vs redistribute at a glance
+
+| | `network <prefix>` | `redistribute <source>` |
+|---|---|---|
+| What it does | Promotes one specific prefix into BGP | Bulk-injects all routes from a source |
+| Needs a matching RIB route? | **Yes**, exact prefix and length | Yes, but pulls them all automatically |
+| Origin code | `i` (IGP) | `?` (incomplete) |
+| Precision | Surgical, one prefix per line | Broad, all-or-(filtered) |
+| Typical use | The handful of prefixes you intentionally originate | Many routes from an IGP or connected, with a route-map filter |
+
+The rule of thumb: use **`network`** when you know the exact short list of prefixes you mean to announce (it is precise and safe, hard to over-share). Reach for **`redistribute`** when there are too many routes to list by hand, and then **always filter it** so you only leak what you intend.
+
+## After origination: the prefix goes to your neighbors
+
+Once a prefix lives in your BGP table, it is advertised to your neighbors, and here the eBGP/iBGP distinction from `bgp-ebgp-vs-ibgp` comes straight back:
+
+- To an **eBGP** neighbor (a different AS), BGP **prepends your own ASN** to the AS_PATH on the way out. Your peer sees the route arrive with your AS at the front of the path.
+- To an **iBGP** neighbor (your own AS), the AS_PATH is sent **unchanged**, because the route has not crossed an AS boundary.
+
+So origination and propagation are two steps: `network` or `redistribute` gets the prefix *into* BGP, and then the session machinery carries it *outward*, applying the AS_PATH rules you already learned.
+
+## Tying it to the lab
+
+In the upcoming labs you will configure:
+
+```
+router bgp 65001
+ network 1.1.1.1/32
+```
+
+and it works on the first try. Now you know exactly *why*: `1.1.1.1/32` is the router's loopback, which is a **connected** route already sitting in the RIB. The `network` statement finds that matching route, promotes it into BGP with origin `i`, and the eBGP session carries it to the peer with AS 65001 prepended. No magic, just the rule you just learned.
+
+## What's next
+
+You have the theory: a session alone advertises nothing, and you originate prefixes with either `network` (precise) or `redistribute` (bulk, filtered). Next, in the guided lab **`bgp-ebgp-peering`**, you will stand up a real eBGP session between two autonomous systems and bring it to Established. After that, in **`bgp-advertising-routes`**, you will put this lesson to work, dropping in `network` statements and watching your prefixes appear in the peer's table.

@@ -1,0 +1,12 @@
+id: bgp-ebgp-vs-ibgp
+type: lesson
+title: "eBGP vs iBGP: One Protocol, Two Rule Sets"
+summary: "The same BGP behaves differently depending on whether its two peers sit in different autonomous systems or the same one, and that single fact drives AS_PATH handling, next-hop, loop prevention, and where you peer."
+path: bgp-fundamentals
+module: ebgp-fundamentals
+difficulty: beginner
+estimated_minutes: 12
+prerequisites: [bgp-autonomous-systems]
+tags: [bgp, ebgp, ibgp, fundamentals]
+status: published
+version: 1
