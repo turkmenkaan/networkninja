@@ -5,6 +5,7 @@ import {
   JetBrains_Mono,
 } from "next/font/google";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 
@@ -65,6 +66,7 @@ export default function RootLayout({
         <SiteHeader />
         <main className="relative">{children}</main>
         <SiteFooter />
+        <Analytics />
       </body>
     </html>
   );
