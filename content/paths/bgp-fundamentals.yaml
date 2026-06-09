@@ -19,6 +19,7 @@ modules:
       - { id: bgp-autonomous-systems,      status: published }
       - { id: bgp-path-vector,             status: published }
       - { id: bgp-sessions-and-messages,   status: published }
+      - { id: lab-environment-setup,       status: published }
       - { id: bgp-observe-a-session,       status: published }
 
   - id: ebgp-fundamentals

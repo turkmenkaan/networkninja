@@ -1,0 +1,12 @@
+id: lab-environment-setup
+type: lesson
+title: "Set Up Your Lab Environment"
+summary: "Install Docker and Containerlab so you can run the hands-on labs on your own machine."
+path: bgp-fundamentals
+module: foundations
+difficulty: beginner
+estimated_minutes: 10
+prerequisites: []
+tags: [setup, containerlab, docker]
+status: published
+version: 1

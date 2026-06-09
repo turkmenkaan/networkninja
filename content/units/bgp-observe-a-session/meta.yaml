@@ -7,6 +7,7 @@ module: foundations
 difficulty: beginner
 estimated_minutes: 20
 prerequisites:
+  - lab-environment-setup
   - bgp-sessions-and-messages
 tags: [bgp, fundamentals, observation, frr]
 mode: guided

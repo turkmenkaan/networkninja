@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { MarkComplete } from "@/components/progress/MarkComplete";
 import { ObjectivesChecklist } from "@/components/progress/ObjectivesChecklist";
+import { LabRequirement } from "@/components/LabRequirement";
 
 export function generateStaticParams() {
   // Only build pages for units that actually exist (published manifests).
@@ -47,6 +48,10 @@ export default function UnitPage({ params }: { params: { id: string } }) {
     ctx && ctx.index >= 0 && ctx.index < ctx.flat.length - 1
       ? ctx.flat[ctx.index + 1]
       : null;
+  // The first lab in the path gets the prominent Containerlab setup notice;
+  // later labs get a compact reminder.
+  const firstLabId = ctx?.flat.find((u) => u.meta.type === "lab")?.id;
+  const isFirstLab = !!ctx && firstLabId === meta.id;
 
   return (
     <div className="mx-auto max-w-shell px-5 pb-8 pt-10 sm:px-8 sm:pt-14">
@@ -87,31 +92,34 @@ export default function UnitPage({ params }: { params: { id: string } }) {
             </p>
           </header>
 
-          {/* lab toolbar: download topology */}
+          {/* containerlab setup notice (labs only) */}
+          {isLab && (
+            <LabRequirement variant={isFirstLab ? "full" : "compact"} />
+          )}
+
+          {/* lab toolbar: download the full lab bundle (topology + configs) */}
           {isLab && unit.lab?.topologyYaml && (
             <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-ink-line bg-ink-raised/50 p-4">
               <div className="flex-1">
                 <div className="font-display font-semibold text-paper">
-                  Lab topology
+                  Lab files
                 </div>
                 <p className="text-sm text-paper-muted">
-                  Download <code className="font-mono text-blade-dim">
-                    {unit.lab.topologyFilename}
-                  </code>{" "}
-                  and deploy it with{" "}
+                  Download the lab (topology + configs), unzip it, then from
+                  that folder run{" "}
                   <code className="font-mono text-blade-dim">
-                    containerlab deploy
+                    containerlab deploy -t topology.clab.yml
                   </code>
                   .
                 </p>
               </div>
               <a
-                href={`/api/units/${meta.id}/topology`}
-                download={unit.lab.topologyFilename}
+                href={`/api/units/${meta.id}/lab`}
+                download={`${meta.id}.zip`}
                 className="inline-flex items-center gap-2 rounded-xl border border-blade/40 bg-blade/15 px-4 py-2.5 text-sm font-medium text-blade transition-all hover:border-blade/70 hover:bg-blade/20"
               >
                 <DownloadIcon className="h-4 w-4" />
-                Download topology
+                Download lab (.zip)
               </a>
             </div>
           )}

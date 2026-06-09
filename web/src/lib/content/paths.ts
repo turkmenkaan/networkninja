@@ -219,3 +219,49 @@ export function pathStats(p: LearningPath) {
   }
   return { published, planned, labs, lessons, totalMinutes };
 }
+
+/** Recursively list file paths under `dir`, relative to it (posix separators). */
+function walkFiles(dir: string, base = ""): string[] {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  for (const e of entries) {
+    const rel = base ? `${base}/${e.name}` : e.name;
+    if (e.isDirectory()) out.push(...walkFiles(path.join(dir, e.name), rel));
+    else out.push(rel);
+  }
+  return out;
+}
+
+/**
+ * Everything needed to RUN a lab locally: `topology.clab.yml` plus the whole
+ * `configs/` tree. The topology's bind mounts are relative (e.g.
+ * `configs/r1/frr.conf`), so the configs MUST ship alongside it. Returns null
+ * if the unit has no topology (e.g. lessons).
+ */
+export function loadLabBundleFiles(
+  id: string,
+): { path: string; data: Buffer }[] | null {
+  const unitDir = path.join(UNITS_DIR, id);
+  let topo: Buffer;
+  try {
+    topo = fs.readFileSync(path.join(unitDir, "topology.clab.yml"));
+  } catch {
+    return null;
+  }
+  const files: { path: string; data: Buffer }[] = [
+    { path: "topology.clab.yml", data: topo },
+  ];
+  const configsDir = path.join(unitDir, "configs");
+  for (const rel of walkFiles(configsDir)) {
+    files.push({
+      path: path.posix.join("configs", rel),
+      data: fs.readFileSync(path.join(configsDir, rel)),
+    });
+  }
+  return files;
+}

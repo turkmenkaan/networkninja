@@ -7,6 +7,7 @@ module: ebgp-fundamentals
 difficulty: beginner
 estimated_minutes: 25
 prerequisites:
+  - lab-environment-setup
   - bgp-ebgp-vs-ibgp
   - bgp-sessions-and-messages
 tags: [bgp, ebgp, frr, peering]

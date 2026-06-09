@@ -1,0 +1,38 @@
+# Set Up Your Lab Environment
+
+NetworkNinja labs run on **your own machine**, not in the browser. Each lab is a handful of real routers that you boot locally and log into. To do that you need two tools installed once: **Docker** and **Containerlab**.
+
+This page gets you set up. It is a one-time thing: once Docker and Containerlab are working, every lab in the curriculum just runs.
+
+## What the labs need
+
+- **Docker** the container runtime that actually runs the routers.
+- **Containerlab** the tool that wires those containers together into a network topology from a `.clab.yml` file.
+- **A Linux environment**, because Containerlab uses Linux networking under the hood.
+
+## Pick your path by operating system
+
+- **Linux:** install Docker, then install Containerlab. Everything runs natively.
+- **macOS:** install **Docker Desktop**. Containerlab runs inside Docker Desktop's Linux VM, not directly on macOS, which is fine for these labs.
+- **Windows:** use **WSL2** with a Linux distribution plus Docker Desktop, and run Containerlab from inside WSL2.
+
+> The official Containerlab docs cover every operating system and stay current as the tool changes, so treat them as the source of truth: **[containerlab.dev/install](https://containerlab.dev/install/)**. (You can also grab Docker from [docs.docker.com](https://docs.docker.com/get-docker/).)
+
+## Verify your setup
+
+Once both are installed, confirm they work:
+
+```bash
+containerlab version
+docker version
+```
+
+If both print version information, you are ready to go.
+
+## A note on the first deploy
+
+The first time you run `containerlab deploy`, it downloads the router image (FRRouting), so it may take a minute. After that, the image is cached and labs boot in seconds.
+
+## What's next
+
+That's it. Head to your first lab, **`bgp-observe-a-session`**, where you'll boot a real pair of routers and read a live BGP session.

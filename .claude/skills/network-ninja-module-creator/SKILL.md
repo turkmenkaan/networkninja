@@ -161,6 +161,11 @@ runtime:                      # ignored in Tier 1; consumed by the Tier 2 runner
 - **Guided** starting configs include base addressing + a `! TODO:` marker where the learner
   adds config. The full answer goes in `solution/<node>/frr.conf`. **Challenge** starting
   configs strip protocol config down to addressing only.
+- **Every lab requires the `lab-environment-setup` lesson.** Add `lab-environment-setup` to the
+  lab's `meta.yaml` `prerequisites`. The web app automatically renders a Containerlab setup
+  notice on lab pages (`web/src/components/LabRequirement.tsx`): prominent on the path's first
+  lab, compact on later ones. So do **not** hand-write Docker/Containerlab install instructions
+  in lab content; the dedicated setup lesson and that notice cover it.
 
 ---
 
