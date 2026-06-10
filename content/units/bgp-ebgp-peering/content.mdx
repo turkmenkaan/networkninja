@@ -6,14 +6,17 @@ By the end of this lab you'll have brought up a working **eBGP** session between
 
 ## Topology
 
-```
-   AS 65001                         AS 65002
-  ┌────────┐    10.0.12.0/24     ┌────────┐
-  │   r1   │ eth1 ──────── eth1  │   r2   │
-  │ .1     │                     │ .2     │
-  └────────┘                     └────────┘
-   lo 1.1.1.1/32                  lo 2.2.2.2/32
-```
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "lo 2.2.2.2/32", col: 1, row: 0 },
+  ]}
+  links={[{ from: "r1", to: "r2" }]}
+  legend="eBGP over 10.0.12.0/24 (r1 .1, r2 .2, on eth1)"
+  caption={<>Two routers in different autonomous systems, sharing an eth1 link. The interface addressing is pre-staged; bringing up the eBGP session between them is your job.</>}
+/>
 
 The interface addressing is **already configured** for you. The BGP session is not; that's the part you'll build.
 
