@@ -1,0 +1,23 @@
+id: bgp-next-hop-self
+type: lab
+title: "Fixing the iBGP Next-Hop"
+summary: "Diagnose an external prefix that arrives over iBGP but stays INVALID, then fix it with next-hop-self."
+path: bgp-fundamentals
+module: ibgp-fundamentals
+difficulty: intermediate
+estimated_minutes: 30
+prerequisites:
+  - lab-environment-setup
+  - bgp-ibgp-peering
+tags: [bgp, ibgp, next-hop-self, ospf, frr]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 3
+  est_ram_mb: 768
+  images: [frrouting/frr]
+  est_boot_seconds: 30
+
+status: published
+version: 1

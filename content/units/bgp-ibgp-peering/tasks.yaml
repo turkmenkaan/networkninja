@@ -1,0 +1,49 @@
+# Objectives + verification for bgp-ibgp-peering.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY / TO-CONFIRM: the JSON paths below are schema-derived and have NOT yet
+# been run through a live FRR deploy. Confirm them on a real deploy before
+# relying on them, in particular:
+#   - the peer key in `show ip bgp summary json` is the LOOPBACK address
+#     (2.2.2.2), not an interface address, because iBGP peers on the loopback.
+#   - iBGP within a single AS produces an EMPTY AS_PATH, so the route check
+#     asserts that the prefix/path EXISTS rather than matching an aspath string.
+
+objectives:
+  - id: ibgp-session-established
+    description: "The iBGP session from r1 to r2's loopback (2.2.2.2) is Established."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-ibgp-peering-r1 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['2.2.2.2'].state"
+        equals: "Established"
+    hint: >
+      iBGP peers share the SAME AS, so remote-as must equal your own AS (65001)
+      on both sides. Because you peer on the loopback, you also need
+      `neighbor 2.2.2.2 update-source lo` so the session is sourced from lo and
+      the loopback is reachable. If it is stuck in Active/Connect, the loopback
+      is not reachable over OSPF or update-source is missing.
+
+  - id: r2-learns-r1-loopback
+    description: "r2 has learned r1's loopback 1.1.1.1/32 over iBGP."
+    display_command: "docker exec -it clab-bgp-ibgp-peering-r2 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      # iBGP within one AS has an EMPTY AS_PATH, so assert the path EXISTS
+      # rather than matching an aspath string.
+      assert:
+        path: "$.paths"
+        exists: true
+    hint: >
+      The prefix only appears once r1 advertises it with `network 1.1.1.1/32`
+      AND the iBGP session is Established. The AS_PATH will look empty because
+      iBGP does not prepend the local AS; that is expected within one AS.

@@ -1,0 +1,88 @@
+# Objectives + verification for bgp-ibgp-capstone (CHALLENGE / blank slate).
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY / TO-CONFIRM: every JSON path below
+# ($.ipv4Unicast.peers['<loopback>'].state, $.paths[0].aspath.string,
+# $.paths[0].nexthops[0].ip) and every exact AS_PATH string ("65000 65001",
+# "65000 65002") and next-hop ("1.1.1.1") are SCHEMA-DERIVED from FRR's BGP JSON
+# output (bgp_route.c / bgp_show_summary), NOT yet observed on a live deploy.
+# Confirm each path, AS_PATH string, and next-hop on a real `containerlab deploy`
+# before treating them as verified. iBGP peer keys are LOOPBACKS (update-source lo),
+# so the summary peer key is the loopback IP, not an interface address. AS_PATH
+# assertions use `contains` (not `equals`) to stay robust to ordering/prepending.
+# Objective 3 (internal-router-valid-path) asserts the exact next-hop IP and is
+# especially worth confirming live: it is the proof that next-hop-self on the edge
+# rewrote the external next-hop to r1's loopback.
+
+objectives:
+  - id: ibgp-fullmesh-nonadjacent
+    description: "r1's iBGP session to the non-adjacent r3 (3.3.3.3) is Established (full mesh + OSPF reachability)."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-ibgp-capstone-r1 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        # Peer key is r3's LOOPBACK (the iBGP session uses update-source lo).
+        path: "$.ipv4Unicast.peers['3.3.3.3'].state"
+        equals: "Established"
+    hint: >
+      Full mesh = 3 iBGP sessions inside AS 65000; r1 and r3 share no link but
+      still need a session. Remember `update-source lo`, and OSPF must carry the
+      loopbacks so 1.1.1.1 and 3.3.3.3 can reach each other through r2.
+
+  - id: external-prefix-crosses-as
+    description: "r5 has learned r4's prefix 4.4.4.4/32 across the transit AS, with AS_PATH 65000 65001."
+    display_command: "docker exec -it clab-bgp-ibgp-capstone-r5 vtysh -c 'show ip bgp 4.4.4.4/32'"
+    check:
+      node: r5
+      command: "vtysh -c 'show ip bgp 4.4.4.4/32 json'"
+      parse: json
+      # As 4.4.4.4/32 leaves the transit AS toward r5, r3 (eBGP) prepends 65000,
+      # so r5 sees "65000 65001". `contains` keeps this robust to whitespace.
+      assert:
+        path: "$.paths[0].aspath.string"
+        contains: "65000 65001"
+    hint: >
+      The prefix must travel r4 -> r1 (eBGP) -> across the iBGP mesh -> r3 (eBGP)
+      -> r5. If r5 sees nothing, check the iBGP mesh is up and `network 4.4.4.4/32`
+      is on r4. Do NOT put the eBGP edge links in OSPF.
+
+  - id: internal-router-valid-path
+    description: "Internal non-edge router r2 has a VALID path to 4.4.4.4/32 (proves next-hop-self on the edge worked)."
+    display_command: "docker exec -it clab-bgp-ibgp-capstone-r2 vtysh -c 'show ip bgp 4.4.4.4/32'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 4.4.4.4/32 json'"
+      parse: json
+      # TO-CONFIRM: next-hop should be r1's LOOPBACK (1.1.1.1) because r1 applied
+      # next-hop-self toward its iBGP peers. Without next-hop-self the next-hop
+      # would be the external 10.0.14.4, which r2 cannot reach (not in OSPF), and
+      # the path would be INVALID. Confirm $.paths[0].nexthops[0].ip on a real
+      # deploy: the JSON shape (paths[].nexthops[].ip) is schema-derived.
+      assert:
+        path: "$.paths[0].nexthops[0].ip"
+        equals: "1.1.1.1"
+    hint: >
+      next-hop-self belongs on the EDGE routers (r1 and r3). Without it the
+      external next-hop 10.0.14.4 is never advertised into OSPF, so r2 has no way
+      to reach it and the path stays INVALID. r1 must rewrite it to 1.1.1.1.
+
+  - id: reverse-direction
+    description: "r4 has learned r5's prefix 5.5.5.5/32, with AS_PATH 65000 65002."
+    display_command: "docker exec -it clab-bgp-ibgp-capstone-r4 vtysh -c 'show ip bgp 5.5.5.5/32'"
+    check:
+      node: r4
+      command: "vtysh -c 'show ip bgp 5.5.5.5/32 json'"
+      parse: json
+      assert:
+        path: "$.paths[0].aspath.string"
+        contains: "65000 65002"
+    hint: >
+      The mirror of the forward path: r5 originates 5.5.5.5/32, r3 prepends 65000
+      as it enters the transit AS, the iBGP mesh carries it to r1, and r1 hands it
+      to r4. If r4 sees nothing, re-check r5's `network` and the edge eBGP sessions.

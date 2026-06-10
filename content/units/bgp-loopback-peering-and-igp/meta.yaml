@@ -1,0 +1,12 @@
+id: bgp-loopback-peering-and-igp
+type: lesson
+title: "Peering on Loopbacks (and Why You Need an IGP)"
+summary: "Why iBGP sessions ride on loopback addresses instead of physical interfaces, how to source them correctly, and why an IGP underlay is the thing that makes loopback peering possible."
+path: bgp-fundamentals
+module: ibgp-fundamentals
+difficulty: beginner
+estimated_minutes: 13
+prerequisites: [bgp-ibgp-full-mesh]
+tags: [bgp, ibgp, loopback, igp, ospf]
+status: published
+version: 1

@@ -1,0 +1,23 @@
+id: bgp-ibgp-capstone
+type: lab
+mode: challenge
+title: "Capstone: Build a Transit AS"
+summary: "Build a complete transit AS from a blank slate: an OSPF underlay, a full iBGP mesh on loopbacks, next-hop-self on the edges, and two eBGP edges, so an external prefix crosses the AS end to end."
+path: bgp-fundamentals
+module: ibgp-fundamentals
+difficulty: intermediate
+estimated_minutes: 45
+prerequisites:
+  - lab-environment-setup
+  - bgp-next-hop-self
+tags: [bgp, ibgp, capstone, challenge, ospf, frr]
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 5
+  est_ram_mb: 1280
+  images: [frrouting/frr]
+  est_boot_seconds: 35
+
+status: published
+version: 1

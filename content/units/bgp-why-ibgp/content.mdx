@@ -1,0 +1,75 @@
+# Why iBGP Exists
+
+Picture a real autonomous system. It is almost never a single router. A transit provider's AS might hold dozens or hundreds of routers, with a couple of them sitting at the **edge**, running eBGP sessions to the outside world. Those edge routers learn external routes, the prefixes that describe the rest of the internet, directly from their eBGP neighbors.
+
+But here is the catch. eBGP only delivers those external routes to the routers that actually run the eBGP session: the edges. Every **other** router inside your AS, including the second edge, hears nothing. They have no idea those external prefixes exist, so they have no idea how to forward toward them. A packet that lands on an internal router headed for an external destination simply has nowhere to go.
+
+You need BGP running **inside** the AS, between your own routers, to carry those externally learned prefixes everywhere they are needed. That internal BGP is **iBGP**.
+
+## The job of iBGP
+
+iBGP distributes BGP prefixes among routers in the **same** AS. That means two things:
+
+- **Externally learned routes** that an edge router picks up over eBGP get handed to the rest of the AS, so every internal router can forward toward outside destinations.
+- **Internally originated routes** (prefixes your own AS injects into BGP) get shared the same way.
+
+This is exactly what lets an AS act as **transit**: traffic can enter on one edge, cross the interior, and leave on another edge, because every router along the way learned the route via iBGP. Without iBGP, your AS is a collection of routers that each know only their own little corner of BGP.
+
+<ASTopology
+  eyebrow="Carrying an external prefix across a transit AS"
+  nodeShape="router"
+  nodes={[
+    { id: "ext1", name: "ISP A", asn: "AS 64500", sublabel: "external", col: 0, row: 1, muted: true },
+    { id: "e1", name: "edge1", asn: "AS 65000", sublabel: "eBGP edge", col: 1, row: 1 },
+    { id: "core", name: "core", asn: "AS 65000", sublabel: "internal", col: 2, row: 0 },
+    { id: "e2", name: "edge2", asn: "AS 65000", sublabel: "eBGP edge", col: 3, row: 1 },
+    { id: "ext2", name: "ISP B", asn: "AS 64600", sublabel: "external", col: 4, row: 1, muted: true },
+  ]}
+  links={[
+    { from: "ext1", to: "e1", label: "eBGP" },
+    { from: "e1", to: "core", label: "iBGP" },
+    { from: "e1", to: "e2", label: "iBGP" },
+    { from: "core", to: "e2", label: "iBGP" },
+    { from: "e2", to: "ext2", label: "eBGP", faint: true },
+  ]}
+  legend="eBGP at the edges, iBGP carries the prefix across the inside"
+  caption={<>A prefix from ISP A arrives at <strong>edge1</strong> over eBGP. iBGP then carries it to <strong>core</strong> and <strong>edge2</strong> so the whole of AS 65000 can forward toward it, and can transit traffic out toward ISP B.</>}
+/>
+
+## The loop-prevention gap
+
+There is a subtle problem hiding inside that picture, and it is the reason iBGP has its own special rule.
+
+Recall how eBGP prevents loops: it uses the **AS_PATH**. Every time a route crosses into a new AS over eBGP, that AS prepends its own ASN to the front of the path. If a router ever receives a route whose AS_PATH **already contains its own ASN**, it knows the route has been here before and rejects it. Clean and reliable.
+
+Now look inside a single AS. Every router shares the **same** ASN. iBGP does not prepend anything to the AS_PATH (you are still in the same AS, so there is nothing to add). That means the AS_PATH is identical no matter how many internal routers a route passes through. AS_PATH simply **cannot** detect an internal loop, because it never changes inside the AS.
+
+BGP needs a different mechanism, and it is delightfully blunt:
+
+> A route learned from an iBGP peer is **never** re-advertised to another iBGP peer.
+
+This is the **iBGP split-horizon rule**. Spell out exactly what it does and does not block:
+
+- A route learned over **eBGP** **may** be advertised to your iBGP peers. This is how external routes get into the interior in the first place.
+- A route learned over **iBGP** is **not** passed along to any other iBGP peer. It stops there.
+
+Because an iBGP-learned route never gets relayed a second time, it can never loop around the interior. The rule does the job that AS_PATH does for eBGP, just by refusing to forward rather than by inspecting a path.
+
+## The big consequence: a full mesh
+
+That blunt rule solves loops, but it creates a brand new problem. If `edge1` learns an external prefix and tells `core` over iBGP, then `core` is **forbidden** from relaying it on to `edge2`. So how does `edge2` ever hear about it?
+
+The only answer iBGP allows: `edge2` must learn it **straight from the source**, `edge1`, over its own direct iBGP session. And the same is true for every other router and every other prefix. Since no router will relay iBGP routes for you, **every iBGP speaker has to peer directly with every other iBGP speaker**. That is a **full mesh**, and it scales painfully as the AS grows.
+
+This is a big enough topic that the next lesson, **`bgp-ibgp-full-mesh`**, is devoted entirely to it: the n(n-1)/2 session count, why it hurts, and the tools (route reflectors and confederations) built to escape it.
+
+## Two recaps worth pinning down
+
+From the previous lesson, keep these two iBGP defaults firmly in mind, because they set up problems you will solve later:
+
+- **iBGP does not prepend the AS_PATH.** The path arrives unchanged, which is precisely why AS_PATH is useless for internal loop detection and why the split-horizon rule has to exist.
+- **iBGP does not change the NEXT_HOP by default.** When an edge router hands an external route to an internal peer, it leaves the next-hop set to the **original external** address, the router in the *other* AS. An internal router may have no route to that address and will quietly fail to install the prefix. The fix, `next-hop-self`, is coming up in this module.
+
+## What's next
+
+You now know **why** iBGP exists: an AS is many routers, eBGP only feeds the edges, so you need internal BGP to carry external (and internally originated) prefixes across the whole AS. You also know why it cannot lean on AS_PATH for loops, and how the split-horizon rule fills that gap. Next, in **`bgp-ibgp-full-mesh`**, we follow that rule to its uncomfortable conclusion: the full-mesh requirement and the scaling wall it creates.

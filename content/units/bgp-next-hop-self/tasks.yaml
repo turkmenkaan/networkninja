@@ -1,0 +1,54 @@
+# Objectives + verification for bgp-next-hop-self.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY / TO-CONFIRM: the JSON paths below are schema-derived from FRR's
+# `show ip bgp summary json` and `show ip bgp <prefix> json` output and have NOT
+# yet been confirmed against a live v8.4.1 deploy. Confirm on a real deploy:
+#   - the loopback peer key `$.ipv4Unicast.peers['2.2.2.2']` (peering is on the
+#     loopback, so the key is the loopback IP, not an interface IP);
+#   - the next-hop assertion `$.paths[0].nexthops[0].ip` == "1.1.1.1" (best path
+#     first; after next-hop-self the next-hop is r1's loopback). If the exact
+#     shape differs, an acceptable alternative is asserting the path is valid/best,
+#     e.g. `$.paths[0].valid` == true (or `$.paths[0].bestpath.overall` == true).
+#     Both the nexthop-ip and the validity asserts are TO-CONFIRM.
+
+objectives:
+  - id: ibgp-session-up
+    description: "r1's iBGP session to r2 (2.2.2.2) is Established."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-next-hop-self-r1 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['2.2.2.2'].state"
+        equals: "Established"
+    hint: >
+      The iBGP session peers on loopbacks (2.2.2.2 on r2, 1.1.1.1 on r1) and is
+      sourced from lo via `update-source lo`. It rides the OSPF underlay, so the
+      loopbacks must be reachable. This session is pre-staged and should already
+      be Established before you make any changes.
+
+  - id: external-route-valid-on-r2
+    description: "r2 has a VALID best path to 3.3.3.3/32 with next-hop 1.1.1.1 (after next-hop-self)."
+    display_command: "docker exec -it clab-bgp-next-hop-self-r2 vtysh -c 'show ip bgp 3.3.3.3/32'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 3.3.3.3/32 json'"
+      parse: json
+      # TO-CONFIRM on a real deploy (see header note). If the nexthop path
+      # differs, fall back to asserting the path is valid/best instead.
+      assert:
+        path: "$.paths[0].nexthops[0].ip"
+        equals: "1.1.1.1"
+    hint: >
+      Before the fix, r2 receives 3.3.3.3/32 with next-hop 10.0.13.3 (r1's eBGP
+      edge address). iBGP does not change the next-hop, and 10.0.13.0/24 is not
+      in OSPF, so r2 cannot resolve it and the route is INVALID (no `>`). On r1,
+      under `router bgp 65001`, add `neighbor 2.2.2.2 next-hop-self`, then run
+      `clear ip bgp *`. r1 will re-advertise the prefix with next-hop 1.1.1.1
+      (its loopback), which r2 reaches via OSPF, so the route becomes VALID/best.

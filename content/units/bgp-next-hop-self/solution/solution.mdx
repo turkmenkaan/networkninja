@@ -1,0 +1,38 @@
+# Solution: Fixing the iBGP Next-Hop
+
+The entire fix is one line on `r1`, under `router bgp 65001`:
+
+```
+router bgp 65001
+ neighbor 2.2.2.2 next-hop-self
+```
+
+Apply it, then `clear ip bgp *` (or `clear ip bgp 2.2.2.2 soft out`) so `r1` re-advertises with the new next-hop. The complete resulting config is in `solution/r1/frr.conf`; `r2` and `r3` are unchanged from the starting state.
+
+## The next-hop problem
+
+`r3` (AS 65002) advertises `3.3.3.3/32` to `r1` over eBGP with next-hop `10.0.13.3` (r3's edge address). `r1` re-advertises that prefix to its iBGP peer `r2`, and here is the catch: **iBGP does not rewrite the next-hop.** So `r2` receives `3.3.3.3/32` with next-hop `10.0.13.3`, an address on the eBGP edge link.
+
+That edge subnet, `10.0.13.0/24`, is deliberately **not** in OSPF, so `r2` has no route to `10.0.13.3`. BGP will not select a path whose next-hop is unresolvable, so on `r2` the prefix shows up but stays **INVALID**: no `>`, never installed in the routing table.
+
+## Why next-hop-self solves it
+
+`neighbor 2.2.2.2 next-hop-self` tells `r1` to set the next-hop to its **own loopback, `1.1.1.1`**, on every route it sends to `r2`. Because `1.1.1.1` is advertised in OSPF, `r2` can resolve it. The next-hop is now reachable, so the path becomes **VALID** and best (`>`), and `3.3.3.3/32` is installed.
+
+Apply `next-hop-self` on the router that *injects* external routes into iBGP, that is, each border router peering eBGP.
+
+## Verifying
+
+```
+r2# show ip bgp 3.3.3.3/32 json
+```
+
+The check asserts the best path now points at r1's loopback:
+
+```
+$.paths[0].nexthops[0].ip == "1.1.1.1"
+```
+
+## An alternative fix
+
+You could instead advertise the edge subnet `10.0.13.0/24` into OSPF, so every internal router can resolve the original eBGP next-hop. That works, but it leaks external link addressing into your IGP. `next-hop-self` is the cleaner, standard approach: external link subnets stay out of the IGP, and each border router presents one stable, IGP-reachable next-hop.

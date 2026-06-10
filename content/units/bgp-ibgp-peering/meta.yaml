@@ -1,0 +1,23 @@
+id: bgp-ibgp-peering
+type: lab
+title: "iBGP Over Loopbacks"
+summary: "Bring up an iBGP session between two routers in one AS, peering on loopbacks over an OSPF underlay."
+path: bgp-fundamentals
+module: ibgp-fundamentals
+difficulty: beginner
+estimated_minutes: 25
+prerequisites:
+  - lab-environment-setup
+  - bgp-loopback-peering-and-igp
+tags: [bgp, ibgp, loopback, ospf, frr]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 2
+  est_ram_mb: 640
+  images: [frrouting/frr]
+  est_boot_seconds: 25
+
+status: published
+version: 1

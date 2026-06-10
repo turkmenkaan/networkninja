@@ -1,0 +1,47 @@
+# Solution: iBGP Over Loopbacks
+
+The lab is complete when the iBGP session between `r1` and `r2` is **Established** on their loopbacks and each router has learned the other's loopback prefix. The OSPF underlay is pre-staged; the work is a BGP process on each router peering on the loopback, sourced from `lo`, advertising its own loopback.
+
+## r1 (AS 65001)
+
+```
+router bgp 65001
+ neighbor 2.2.2.2 remote-as 65001
+ neighbor 2.2.2.2 update-source lo
+ network 1.1.1.1/32
+```
+
+## r2 (AS 65001)
+
+```
+router bgp 65001
+ neighbor 1.1.1.1 remote-as 65001
+ neighbor 1.1.1.1 update-source lo
+ network 2.2.2.2/32
+```
+
+The complete resulting configs are in `solution/r1/frr.conf` and `solution/r2/frr.conf`.
+
+## Why it works
+
+- Both sides run BGP in the **same** AS (`router bgp 65001`). Because the `remote-as` value matches the local AS, BGP treats this as an **internal** (iBGP) session.
+- **Why `update-source lo`:** by default FRR sources a BGP session from the egress interface address (`10.0.12.x`). But each side is configured to peer with the *loopback* (`1.1.1.1` / `2.2.2.2`). Without `update-source lo` the TCP connection would arrive from `10.0.12.x`, which does not match the configured neighbor address, and the session would never form. `update-source lo` makes BGP originate the session from the loopback, so the source address matches what the far end expects.
+- **Why the OSPF underlay matters:** loopbacks are not directly connected, so peering on them only works if each router has a route to the other's loopback. The pre-staged `router ospf` advertises both the link (`10.0.12.0/24`) and each loopback (`/32`) into area 0, so `r1` learns `2.2.2.2` and `r2` learns `1.1.1.1` via OSPF. That reachability is what lets the iBGP TCP session reach the remote loopback. iBGP on loopbacks without an IGP is dead on arrival.
+- **No `no bgp ebgp-requires-policy`:** RFC 8212 (the rule that filters policy-less routes) applies to **eBGP only**. This is an internal session, so iBGP routes flow without any extra knob.
+- With the `traditional` defaults profile, defining a neighbor automatically activates it for the IPv4-unicast address family, so no explicit `address-family` block is required.
+
+## Verifying
+
+```
+r1# show ip bgp summary json
+r2# show ip bgp 1.1.1.1/32 json
+```
+
+The checks assert:
+
+```
+$.ipv4Unicast.peers['2.2.2.2'].state == "Established"   (on r1)
+$.paths exists                                           (on r2, for 1.1.1.1/32)
+```
+
+The route check asserts that the path **exists** rather than matching an AS_PATH string, because a prefix that stays inside one AS carries an **empty AS_PATH** over iBGP.

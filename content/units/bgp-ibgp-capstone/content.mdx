@@ -1,0 +1,116 @@
+# Capstone: Build a Transit AS
+
+You are the transit AS. Build all of it: OSPF, a full iBGP mesh, next-hop-self, and two eBGP edges, so traffic flows end to end.
+
+Nothing routing is staged anywhere. The five routers have interface and loopback addresses and that is it. AS 65000 in the middle has three routers (r1, r2, r3) and must carry external prefixes from one side to the other. On the ends, r4 (AS 65001) and r5 (AS 65002) each originate a single loopback prefix and peer eBGP into the transit AS. By the end, r4's prefix must reach r5 and r5's prefix must reach r4, and every internal router must hold a valid path to both. This is the proof that the iBGP fundamentals stuck.
+
+## Topology
+
+<ASTopology
+  eyebrow="Five routers in a line; AS 65000 is the transit core"
+  nodeShape="router"
+  nodes={[
+    { id: "r4", name: "r4", asn: "AS 65001", sublabel: "lo 4.4.4.4/32", col: 0, row: 0 },
+    { id: "r1", name: "r1", asn: "AS 65000", sublabel: "edge - lo 1.1.1.1/32", col: 1, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65000", sublabel: "core - lo 2.2.2.2/32", col: 2, row: 0 },
+    { id: "r3", name: "r3", asn: "AS 65000", sublabel: "edge - lo 3.3.3.3/32", col: 3, row: 0 },
+    { id: "r5", name: "r5", asn: "AS 65002", sublabel: "lo 5.5.5.5/32", col: 4, row: 0 },
+  ]}
+  links={[
+    { from: "r4", to: "r1", label: "10.0.14.0/24 (eBGP edge)" },
+    { from: "r1", to: "r2", label: "10.0.12.0/24 (internal)" },
+    { from: "r2", to: "r3", label: "10.0.23.0/24 (internal)" },
+    { from: "r3", to: "r5", label: "10.0.35.0/24 (eBGP edge)" },
+  ]}
+  legend="r1 and r3 are the AS 65000 edges (eBGP outward, next-hop-self inward); r2 is the internal core"
+  caption={<>r4 (eth1 .4) peers eBGP with r1 (eth1 .1) on 10.0.14.0/24. Inside AS 65000, r1-r2 share 10.0.12.0/24 and r2-r3 share 10.0.23.0/24. r3 (eth2 .3) peers eBGP with r5 (eth1 .5) on 10.0.35.0/24. r1 and r3 are not directly connected, so their iBGP session rides OSPF through r2.</>}
+/>
+
+The interface and loopback addressing is **already configured** on all five routers. Everything routing is yours to build.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots all five routers. Drop into `r1`'s FRR shell (open the others in their own terminals the same way):
+
+```bash
+docker exec -it clab-bgp-ibgp-capstone-r1 vtysh
+```
+
+```bash
+docker exec -it clab-bgp-ibgp-capstone-r2 vtysh
+docker exec -it clab-bgp-ibgp-capstone-r3 vtysh
+docker exec -it clab-bgp-ibgp-capstone-r4 vtysh
+docker exec -it clab-bgp-ibgp-capstone-r5 vtysh
+```
+
+## Your mission
+
+Build the whole transit AS from scratch so an external prefix crosses it end to end:
+
+- **OSPF underlay on r1, r2, r3.** Advertise the **internal** links and the loopbacks into `router ospf` area 0, so every internal router can reach every other internal loopback. Do **not** put the eBGP edge links (`10.0.14.0/24`, `10.0.35.0/24`) into OSPF.
+- **Full iBGP mesh on loopbacks.** Inside AS 65000, every internal router peers iBGP with **both** of the others: three sessions in total (r1-r2, r2-r3, and r1-r3). Peer on loopbacks with `update-source lo`. r1 and r3 share no link, so their session only works because OSPF makes the loopbacks reachable through r2.
+- **next-hop-self on the edge routers.** r1 and r3 sit on the eBGP boundary. They must rewrite the next-hop to their own loopback toward their iBGP peers, or the internal routers inherit an external next-hop they cannot reach.
+- **eBGP to r4 and r5.** r1 peers eBGP with r4 (AS 65001), r3 peers eBGP with r5 (AS 65002). r4 and r5 each advertise their loopback with `network`.
+- The finish line: every external prefix reaches the far side with a **valid** next-hop, and every internal router holds a valid path to both `4.4.4.4/32` and `5.5.5.5/32`.
+
+## Objectives
+
+- ✅ `r1`'s iBGP session to the non-adjacent `r3` (`3.3.3.3`) is **Established**.
+- ✅ `r5` has learned `r4`'s prefix `4.4.4.4/32` across the transit AS, AS_PATH `65000 65001`.
+- ✅ Internal core `r2` holds a **valid** path to `4.4.4.4/32` (next-hop is r1's loopback `1.1.1.1`).
+- ✅ `r4` has learned `r5`'s prefix `5.5.5.5/32`, AS_PATH `65000 65002`.
+
+## Hints
+
+Terse nudges only. This is your proof, so reach for these only when stuck.
+
+- **Full mesh = 3 sessions.** r1-r2, r2-r3, and r1-r3. Miss the r1-r3 session and split-horizon strands one side.
+- **iBGP rides loopbacks.** Each iBGP neighbor needs `update-source lo`, and the loopbacks must be in OSPF for the sessions (especially r1-r3) to come up.
+- **next-hop-self belongs on the edges, r1 and r3.** That is what lets r2 reach the external next-hop.
+- **Keep the eBGP edge links out of OSPF.** Only the internal links and loopbacks go into `router ospf`.
+- **eBGP edges need `no bgp ebgp-requires-policy`** (on r1, r3, r4, and r5), or RFC 8212 filters the routes and you see `(Policy)` instead of prefixes.
+
+## Verify
+
+On `r1`, confirm the full mesh is up (note the iBGP peers are the **loopbacks** `2.2.2.2` and `3.3.3.3`):
+
+```
+r1# show ip bgp summary
+```
+
+Walk the prefix across the AS. On `r5`, confirm it learned r4's loopback, and on `r4` confirm it learned r5's:
+
+```
+r5# show ip bgp 4.4.4.4/32
+r4# show ip bgp 5.5.5.5/32
+```
+
+Both should show an AS_PATH beginning with `65000`, proof the prefix crossed the transit AS. Now prove next-hop-self did its job. On the internal core `r2`, the path to the external prefix must be **valid** with a next-hop of r1's loopback:
+
+```
+r2# show ip bgp 4.4.4.4/32
+```
+
+You want to see `1.1.1.1` as the next-hop (r1 rewrote it). If instead you see the external `10.0.14.4`, the path is INVALID because r2 has no route to it, which means next-hop-self is missing on r1. For a full sanity check, run `show ip bgp` on every internal router and confirm both `4.4.4.4/32` and `5.5.5.5/32` are present and valid.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- A transit AS is built from layers: an **IGP underlay** (OSPF) for internal reachability, a **full iBGP mesh** on loopbacks for prefix distribution, **next-hop-self** at the edges so external next-hops stay reachable, and **eBGP** edges to the neighbor ASes.
+- iBGP does **not** re-advertise a route learned from one iBGP peer to another (split-horizon), which is exactly why the mesh must be **full**: every internal speaker needs a direct session with every other.
+- Two iBGP routers do not need a direct link. r1 and r3 peer over loopbacks that OSPF makes reachable through r2, the whole reason loopback peering plus an IGP is the standard iBGP design.
+- **next-hop-self on the edge** is what turns an external prefix into an internally usable one: without it, internal routers inherit an external next-hop that lives outside their IGP and the path stays INVALID.
+- Keeping the eBGP edge links **out** of OSPF is deliberate: the IGP carries only internal infrastructure, and BGP (with next-hop-self) handles reachability to the outside.
+
+**Next:** you can now build a transit AS end to end, but BGP has only been picking the obvious path. The Path Attributes & Best-Path module starts with `bgp-attribute-types`, where you learn the knobs (LOCAL_PREF, MED, AS_PATH, and more) that decide which path wins when there is more than one.

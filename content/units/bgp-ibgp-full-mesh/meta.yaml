@@ -1,0 +1,12 @@
+id: bgp-ibgp-full-mesh
+type: lesson
+title: "The iBGP Full Mesh (and Why It Doesn't Scale)"
+summary: "Why every iBGP speaker must peer with every other one, the n(n-1)/2 session explosion that follows, and a first glimpse of how route reflectors and confederations escape it."
+path: bgp-fundamentals
+module: ibgp-fundamentals
+difficulty: beginner
+estimated_minutes: 12
+prerequisites: [bgp-why-ibgp]
+tags: [bgp, ibgp, full-mesh, scaling]
+status: published
+version: 1

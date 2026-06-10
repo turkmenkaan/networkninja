@@ -1,0 +1,45 @@
+# Lab name -> containers are named clab-bgp-ibgp-capstone-<node>.
+name: bgp-ibgp-capstone
+
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r1/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r2:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r2/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r3:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r3/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r4:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r4/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r5:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r5/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+
+  links:
+    # eBGP edge: AS 65001 (r4) <----> AS 65000 (r1), subnet 10.0.14.0/24
+    - endpoints: ["r4:eth1", "r1:eth1"]
+    # Internal: r1 <----> r2 inside AS 65000, subnet 10.0.12.0/24
+    - endpoints: ["r1:eth2", "r2:eth1"]
+    # Internal: r2 <----> r3 inside AS 65000, subnet 10.0.23.0/24
+    - endpoints: ["r2:eth2", "r3:eth1"]
+    # eBGP edge: AS 65000 (r3) <----> AS 65002 (r5), subnet 10.0.35.0/24
+    - endpoints: ["r3:eth2", "r5:eth1"]

@@ -1,0 +1,12 @@
+id: bgp-why-ibgp
+type: lesson
+title: "Why iBGP Exists"
+summary: "An AS has many routers, but only the edges learn external routes over eBGP. iBGP carries those prefixes across the whole AS, with a split-horizon rule standing in for AS_PATH loop prevention."
+path: bgp-fundamentals
+module: ibgp-fundamentals
+difficulty: beginner
+estimated_minutes: 13
+prerequisites: [bgp-ebgp-vs-ibgp]
+tags: [bgp, ibgp, fundamentals]
+status: published
+version: 1

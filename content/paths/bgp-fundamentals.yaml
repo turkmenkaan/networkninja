@@ -34,12 +34,12 @@ modules:
   - id: ibgp-fundamentals
     title: "iBGP Fundamentals"
     units:
-      - { id: bgp-why-ibgp,                status: planned }
-      - { id: bgp-ibgp-full-mesh,          status: planned }
-      - { id: bgp-loopback-peering-and-igp, status: planned }
-      - { id: bgp-ibgp-peering,            status: planned }
-      - { id: bgp-next-hop-self,           status: planned }
-      - { id: bgp-ibgp-capstone,           status: planned }
+      - { id: bgp-why-ibgp,                status: published }
+      - { id: bgp-ibgp-full-mesh,          status: published }
+      - { id: bgp-loopback-peering-and-igp, status: published }
+      - { id: bgp-ibgp-peering,            status: published }
+      - { id: bgp-next-hop-self,           status: published }
+      - { id: bgp-ibgp-capstone,           status: published }
 
   - id: path-attributes
     title: "Path Attributes & Best-Path Selection"

@@ -1,0 +1,133 @@
+# Fixing the iBGP Next-Hop
+
+This lab boots with a problem already in place. An external prefix, `3.3.3.3/32`, is being advertised into your AS from a neighbor, it travels across your iBGP session, and it lands on your internal router `r2`. So far so good. But when you ask `r2` whether it can actually use that route, the answer is **no**: the prefix is there, but it is **INVALID**. There is no `>` next to it, and `r2` will not install it.
+
+Your job is to figure out *why* a route that arrived perfectly fine is unusable, then fix it with a single line. The culprit is one of the most classic gotchas in all of iBGP: the **next-hop**.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r2", name: "r2", asn: "AS 65001", sublabel: "lo 2.2.2.2/32", col: 0, row: 0 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 1, row: 0 },
+    { id: "r3", name: "r3", asn: "AS 65002", sublabel: "lo 3.3.3.3/32", col: 2, row: 0 },
+  ]}
+  links={[
+    { from: "r2", to: "r1" },
+    { from: "r1", to: "r3", faint: true },
+  ]}
+  legend="Internal iBGP+OSPF on 10.0.12.0/24 (solid). eBGP edge to AS 65002 on 10.0.13.0/24 (faint)."
+  caption={<>r1 and r2 are one AS (65001): iBGP over loopbacks on an OSPF underlay. r1 also has an eBGP edge to r3 in AS 65002 over 10.0.13.0/24 (the faint link). r3 advertises 3.3.3.3/32 into your AS. Everything is pre-staged; one line on r1 is missing.</>}
+/>
+
+The key detail: OSPF inside AS 65001 advertises the internal link (`10.0.12.0/24`) and the loopbacks, **but not the eBGP edge subnet** (`10.0.13.0/24`). `r2` has no idea that link exists. Hold onto that fact.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots all three routers. The route is already flowing, so head straight for the router where the symptom shows up, `r2`:
+
+```bash
+docker exec -it clab-bgp-next-hop-self-r2 vtysh
+```
+
+## Step 1: Diagnose on r2
+
+Ask `r2` what it knows about the external prefix:
+
+```
+r2# show ip bgp 3.3.3.3/32
+```
+
+The prefix is present and it carries AS_PATH `65002`, so it clearly made it across iBGP from `r1`. But look closely: the **next-hop is `10.0.13.3`**, and there is **no `>`** marking it as the best path. FRR even flags it as not valid. The route is in the table but unusable.
+
+Why `10.0.13.3`? Because `10.0.13.3` is `r3`, the *original* eBGP next-hop. Here is the rule that bites everyone once:
+
+> When a router re-advertises an eBGP-learned route to an **iBGP** peer, it does **not** change the next-hop. `r1` learned `3.3.3.3/32` with next-hop `10.0.13.3` and handed it to `r2` with that same next-hop, unchanged.
+
+Now ask `r2` whether it can actually reach that next-hop:
+
+```
+r2# show ip route 10.0.13.3
+```
+
+You get nothing, the address is **unreachable**. `r2` has no route to `10.0.13.0/24`, because that eBGP edge subnet was deliberately left out of OSPF. BGP's rule is strict: **if the next-hop is not resolvable in the routing table, the path is invalid and cannot be best.** That is exactly what you are seeing. The route exists, but `r2` cannot tell where to send the packets, so it refuses to use it.
+
+The fix is not on `r2`. `r2` is doing the right thing. The fix belongs on `r1`, the router that handed over a next-hop its peer can never reach.
+
+## Step 2: Fix on r1
+
+Open `r1` in another terminal:
+
+```bash
+docker exec -it clab-bgp-next-hop-self-r1 vtysh
+```
+
+Tell `r1` to advertise **itself** as the next-hop on its iBGP session to `r2`:
+
+```
+r1# configure terminal
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 2.2.2.2 next-hop-self
+r1(config-router)# end
+r1# write memory
+```
+
+`next-hop-self` makes `r1` rewrite the next-hop of every route it sends to `r2` to its **own loopback, `1.1.1.1`**. And `1.1.1.1` is advertised in OSPF, so `r2` absolutely can reach it.
+
+Nudge BGP to re-advertise with the new next-hop:
+
+```
+r1# clear ip bgp *
+```
+
+(A soft refresh, `clear ip bgp 2.2.2.2 soft out`, works too and is gentler in production.)
+
+## Step 3: Verify on r2
+
+Back on `r2`, look at the prefix again:
+
+```
+r2# show ip bgp 3.3.3.3/32
+```
+
+This time the **next-hop is `1.1.1.1`** and the path is marked best with a **`>`**. Confirm `r2` can resolve it and that the route is now installed in the table:
+
+```
+r2# show ip route 1.1.1.1
+r2# show ip route 3.3.3.3/32
+```
+
+`1.1.1.1` resolves via OSPF, so the BGP next-hop is valid, and `3.3.3.3/32` is now a real, usable route.
+
+✅ **Objective 1:** `r1`'s iBGP session to `r2` (`2.2.2.2`) is **Established**.
+
+✅ **Objective 2:** `r2` has a **VALID best path** to `3.3.3.3/32` with **next-hop `1.1.1.1`**.
+
+## Troubleshooting
+
+- **Next-hop still `10.0.13.3` on r2?** The `next-hop-self` line may not have taken effect on the session yet. Re-run `clear ip bgp *` (or `clear ip bgp 2.2.2.2 soft out`) on `r1`, then re-check on `r2`.
+- **Route still INVALID after the next-hop changed?** Confirm `r2` can resolve the new next-hop: `show ip route 1.1.1.1` must return an OSPF route. If it does not, check that OSPF is up (`show ip ospf neighbor`) and that both loopbacks are advertised.
+- **iBGP session not Established?** It peers on loopbacks and is sourced from `lo`. Verify OSPF has converged so `1.1.1.1` and `2.2.2.2` are mutually reachable, then `show ip bgp summary`.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- **iBGP does not change the next-hop.** A route learned over eBGP is passed to iBGP peers with its **original** next-hop intact, which is often an address that lives on the edge link and is unknown deep inside your AS.
+- **A BGP path is only valid if its next-hop is resolvable** in the routing table. An unresolvable next-hop means no `>`, no best path, no installed route, even though the prefix is right there.
+- **`neighbor <peer> next-hop-self`** tells a router to advertise its own (loopback) address as the next-hop to that iBGP peer, so the peer can resolve it through the IGP. It is the standard fix and is applied on the router *injecting* external routes into iBGP.
+- An alternative fix is to **carry the edge subnet into the IGP** (advertise `10.0.13.0/24` in OSPF) so every internal router can resolve the original next-hop. That works, but `next-hop-self` is cleaner: it keeps external link subnets out of your IGP and gives you one well-known next-hop per border router.
+
+**Next:** put it all together from a blank slate in the `bgp-ibgp-capstone` challenge, where you build the IGP underlay, a full iBGP mesh, and pass an external prefix end-to-end across a transit AS.

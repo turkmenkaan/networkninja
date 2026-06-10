@@ -1,0 +1,171 @@
+# Solution: Build a Transit AS
+
+The network is complete when the full iBGP mesh is **Established**, both eBGP edges are up, and every external prefix crosses AS 65000 with a **valid** next-hop. The transit AS is built in four layers: an OSPF underlay for internal reachability, a full iBGP mesh on loopbacks, next-hop-self on the edges, and eBGP to the two external neighbors. Take them one at a time.
+
+## The OSPF underlay (r1, r2, r3)
+
+iBGP peers on loopbacks, and a loopback is only reachable if something carries it. That something is OSPF. Each internal router advertises its **internal** links and its loopback into area 0. The eBGP edge links (`10.0.14.0/24` on r1, `10.0.35.0/24` on r3) stay **out** of OSPF: the IGP carries only internal infrastructure.
+
+r1 (one internal link, plus its loopback):
+
+```
+router ospf
+ network 10.0.12.0/24 area 0
+ network 1.1.1.1/32 area 0
+```
+
+r2 is the core, so it advertises **both** internal links and glues r1 and r3 together:
+
+```
+router ospf
+ network 10.0.12.0/24 area 0
+ network 10.0.23.0/24 area 0
+ network 2.2.2.2/32 area 0
+```
+
+r3 mirrors r1:
+
+```
+router ospf
+ network 10.0.23.0/24 area 0
+ network 3.3.3.3/32 area 0
+```
+
+After this, `show ip route ospf` on r1 shows `3.3.3.3/32` reachable through r2, even though r1 and r3 share no link. That reachability is what the next layer depends on.
+
+## The full iBGP mesh (r1, r2, r3)
+
+iBGP has a hard rule: a route learned from one iBGP peer is **not** re-advertised to another iBGP peer (loop prevention by split-horizon). So you cannot chain r1 -> r2 -> r3 and expect r3 to hear r1's prefixes through r2. Every internal speaker needs a **direct** session with every other. With three routers that is three sessions: r1-r2, r2-r3, and r1-r3.
+
+Every iBGP neighbor uses the same AS on both ends (`remote-as 65000`) and `update-source lo` so the session sources from the loopback that OSPF advertised.
+
+r1:
+
+```
+router bgp 65000
+ neighbor 2.2.2.2 remote-as 65000
+ neighbor 2.2.2.2 update-source lo
+ neighbor 3.3.3.3 remote-as 65000
+ neighbor 3.3.3.3 update-source lo
+```
+
+r2:
+
+```
+router bgp 65000
+ neighbor 1.1.1.1 remote-as 65000
+ neighbor 1.1.1.1 update-source lo
+ neighbor 3.3.3.3 remote-as 65000
+ neighbor 3.3.3.3 update-source lo
+```
+
+r3:
+
+```
+router bgp 65000
+ neighbor 1.1.1.1 remote-as 65000
+ neighbor 1.1.1.1 update-source lo
+ neighbor 2.2.2.2 remote-as 65000
+ neighbor 2.2.2.2 update-source lo
+```
+
+The r1-r3 session is the one that proves the design: those two routers never touch, yet the session comes up because OSPF made `1.1.1.1` and `3.3.3.3` reachable through r2.
+
+## next-hop-self on the edges (r1, r3)
+
+When r1 learns `4.4.4.4/32` from r4 over eBGP, the next-hop is r4's interface address `10.0.14.4`. r1 then advertises that prefix to its iBGP peers, and by default it passes the next-hop **unchanged**. But `10.0.14.4` lives on the eBGP edge link, which you deliberately kept out of OSPF, so r2 and r3 have no route to it. The prefix arrives but stays **INVALID**: unreachable next-hop, unusable path.
+
+The fix is `next-hop-self` on the **edge** routers. r1 rewrites the next-hop to its own loopback `1.1.1.1` (which OSPF carries) before handing the prefix to its iBGP peers:
+
+```
+router bgp 65000
+ neighbor 2.2.2.2 next-hop-self
+ neighbor 3.3.3.3 next-hop-self
+```
+
+r3 does the mirror image for `5.5.5.5/32` coming from r5:
+
+```
+router bgp 65000
+ neighbor 1.1.1.1 next-hop-self
+ neighbor 2.2.2.2 next-hop-self
+```
+
+r2 does **not** need next-hop-self: it originates no external routes and sits on no eBGP boundary. Only the edges do.
+
+## The eBGP edges (r1 to r4, r3 to r5)
+
+Finally, the two eBGP sessions on the interface addresses, with `no bgp ebgp-requires-policy` so RFC 8212 does not filter the routes.
+
+r1 adds:
+
+```
+router bgp 65000
+ no bgp ebgp-requires-policy
+ neighbor 10.0.14.4 remote-as 65001
+```
+
+r3 adds:
+
+```
+router bgp 65000
+ no bgp ebgp-requires-policy
+ neighbor 10.0.35.5 remote-as 65002
+```
+
+The external routers are simple. r4 (AS 65001) runs no OSPF, peers eBGP with r1, and advertises its loopback:
+
+```
+router bgp 65001
+ no bgp ebgp-requires-policy
+ neighbor 10.0.14.1 remote-as 65000
+ network 4.4.4.4/32
+```
+
+r5 (AS 65002) is the mirror:
+
+```
+router bgp 65002
+ no bgp ebgp-requires-policy
+ neighbor 10.0.35.3 remote-as 65000
+ network 5.5.5.5/32
+```
+
+The complete resulting configs are in `solution/r1/frr.conf` through `solution/r5/frr.conf`.
+
+## How the prefix crosses end to end
+
+Follow `4.4.4.4/32` from r4 to r5:
+
+1. r4 originates `4.4.4.4/32` and sends it to r1 over eBGP with AS_PATH `65001`.
+2. r1 installs it, applies `next-hop-self`, and floods it across the iBGP mesh to r2 and r3 with next-hop `1.1.1.1`. The AS_PATH is still `65001` (iBGP does not prepend), and the next-hop is now reachable via OSPF, so r2 and r3 hold it as **valid**.
+3. r3 advertises it to r5 over eBGP. As it leaves AS 65000, r3 prepends `65000`, so r5 receives `4.4.4.4/32` with AS_PATH `65000 65001`.
+
+`5.5.5.5/32` travels the mirror path: r5 -> r3 (eBGP) -> iBGP mesh with next-hop `3.3.3.3` -> r1 -> r4, and r4 sees AS_PATH `65000 65002`.
+
+## Why each layer is needed
+
+- **OSPF** gives the internal routers reachability to each other's loopbacks (so iBGP sessions come up) and to the edge loopbacks that become BGP next-hops (so external prefixes are valid).
+- **The full mesh** exists because iBGP will not relay a route between two iBGP peers. Three routers, three sessions, no exceptions.
+- **next-hop-self on the edges** turns an external next-hop into an internal one. Without it, the prefix arrives but the path is INVALID because the external next-hop is not in OSPF.
+- **The eBGP edges** are where the AS_PATH grows: each crossing of the AS 65000 boundary prepends `65000`, which is the receipt the far side reads.
+
+## Verifying
+
+```
+r1# show ip bgp summary json
+r5# show ip bgp 4.4.4.4/32 json
+r2# show ip bgp 4.4.4.4/32 json
+r4# show ip bgp 5.5.5.5/32 json
+```
+
+The checks assert:
+
+```
+r1: $.ipv4Unicast.peers['3.3.3.3'].state == "Established"
+r5: $.paths[0].aspath.string contains "65000 65001"
+r2: $.paths[0].nexthops[0].ip == "1.1.1.1"
+r4: $.paths[0].aspath.string contains "65000 65002"
+```
+
+The r2 check is the one that proves next-hop-self worked: a next-hop of `1.1.1.1` (r1's loopback) means the path is valid. If you ever see `10.0.14.4` there instead, next-hop-self is missing on r1.

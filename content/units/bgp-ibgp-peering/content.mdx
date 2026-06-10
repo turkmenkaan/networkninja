@@ -1,0 +1,128 @@
+# iBGP Over Loopbacks
+
+Two routers. One company. One autonomous system. They already speak OSPF to each other, so each can reach the other's loopback. Now you'll layer **iBGP** on top, peering not on the wire between them but on their stable **loopback** addresses.
+
+By the end of this lab you'll have a working **iBGP** session between `r1` and `r2`, both in **AS 65001**, sourced from their loopbacks and riding on the OSPF underlay that is already up.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65001", sublabel: "lo 2.2.2.2/32", col: 1, row: 0 },
+  ]}
+  links={[{ from: "r1", to: "r2" }]}
+  legend="iBGP over loopbacks, OSPF underlay on 10.0.12.0/24 (r1 .1, r2 .2, on eth1)"
+  caption={<>Both routers live in the same AS. The interface addressing and the OSPF underlay are pre-staged, so each router already learns the other's loopback. Bringing up the iBGP session on those loopbacks is your job.</>}
+/>
+
+The interface addressing **and** the OSPF underlay are **already configured** for you. OSPF advertises both the link and the loopbacks, so `r1` already has a route to `2.2.2.2` and `r2` already has a route to `1.1.1.1`. The iBGP overlay is the part you'll build.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots both routers. Drop into `r1`'s FRR shell:
+
+```bash
+docker exec -it clab-bgp-ibgp-peering-r1 vtysh
+```
+
+## Step 1: Confirm the underlay first
+
+iBGP on loopbacks only works if the loopbacks are reachable. OSPF is meant to handle that, so prove it before touching BGP. On `r1`:
+
+```
+r1# show ip route 2.2.2.2
+```
+
+You should see a route to `2.2.2.2/32` learned via **OSPF** (marked with an `O`), with a next hop of `10.0.12.2` out `eth1`. That OSPF route is exactly what makes the loopback peering possible. While you're here, confirm BGP isn't running yet:
+
+```
+r1# show ip bgp summary
+```
+
+## Step 2: Configure iBGP on r1
+
+Enter configuration mode and start a BGP process in **AS 65001**, then point it at `r2`'s **loopback** (`2.2.2.2`). Because the neighbor is in the **same** AS, this is an **iBGP** session. Source it from `lo` so the TCP session originates from your loopback, and advertise your own loopback into BGP:
+
+```
+r1# configure terminal
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 2.2.2.2 remote-as 65001
+r1(config-router)# neighbor 2.2.2.2 update-source lo
+r1(config-router)# network 1.1.1.1/32
+r1(config-router)# end
+r1# write memory
+```
+
+Because the neighbor's AS (65001) is the **same** as our own (65001), this is an **iBGP** session. The `update-source lo` line tells BGP to source the session from the loopback, which is the address `r2` expects to peer with.
+
+> Notice there's no `no bgp ebgp-requires-policy` here. RFC 8212 enforcement is **eBGP-only**, so iBGP routes flow without it. That rule applies to external sessions, not sessions inside your own AS.
+
+## Step 3: Configure iBGP on r2
+
+A BGP session takes two. Open `r2` in another terminal:
+
+```bash
+docker exec -it clab-bgp-ibgp-peering-r2 vtysh
+```
+
+Mirror the configuration: `r2` is also in **AS 65001**, its neighbor `r1` is reached on loopback `1.1.1.1`, and it advertises its own loopback:
+
+```
+r2# configure terminal
+r2(config)# router bgp 65001
+r2(config-router)# neighbor 1.1.1.1 remote-as 65001
+r2(config-router)# neighbor 1.1.1.1 update-source lo
+r2(config-router)# network 2.2.2.2/32
+r2(config-router)# end
+r2# write memory
+```
+
+## Step 4: Verify
+
+Back on `r1`, watch the session come up:
+
+```
+r1# show ip bgp summary
+```
+
+Within a few seconds the neighbor `2.2.2.2` (the **loopback**, not the wire address) should move to **`Established`**. Now check that the loopbacks actually crossed the session. On `r2`:
+
+```
+r2# show ip bgp 1.1.1.1/32
+```
+
+You should see `1.1.1.1/32` in `r2`'s BGP table, learned from `r1`. Its AS_PATH will look **empty**, that's normal: iBGP does not prepend the local AS, so a prefix that never left AS 65001 carries no ASNs in its path.
+
+✅ **Objective 1:** the iBGP session from `r1` to `r2`'s loopback (`2.2.2.2`) is **Established**.
+
+✅ **Objective 2:** `r2` has learned `r1`'s loopback `1.1.1.1/32` over iBGP.
+
+## Troubleshooting
+
+- **Stuck in `Active` or `Connect`?** You probably forgot `update-source lo`, so the session is sourced from the wrong address and `r2` rejects it. Or the loopback simply isn't reachable: run `show ip route 2.2.2.2` and confirm OSPF has a route.
+- **Session won't form at all?** For iBGP the `remote-as` must **equal your own AS** (65001 on both sides). If you typed a different AS, BGP would treat it as eBGP and the loopback peering would not behave as expected.
+- **Session up but no `1.1.1.1/32` on r2?** Make sure `r1` actually advertises it with `network 1.1.1.1/32`. An Established session exchanges nothing on its own.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- An **iBGP** session is one between neighbors in the **same** autonomous system, so `remote-as` equals your own AS.
+- Peering on **loopbacks** needs an IGP underlay (here OSPF) to make the loopbacks reachable, plus `neighbor <ip> update-source lo` so the session sources from the loopback.
+- iBGP does **not** require `no bgp ebgp-requires-policy`; RFC 8212 enforcement is eBGP-only.
+- A prefix that stays inside one AS carries an **empty AS_PATH**, because iBGP does not prepend the local AS.
+
+**Next:** fix the iBGP next-hop problem so these routes are actually usable, in `bgp-next-hop-self`.

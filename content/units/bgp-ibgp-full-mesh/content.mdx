@@ -1,0 +1,74 @@
+# The iBGP Full Mesh (and Why It Doesn't Scale)
+
+In the last lesson you met a rule that quietly shapes the whole design of an internal BGP network: the **iBGP split-horizon rule**. It sounds like a footnote, but it forces a specific topology on you, and that topology has a scaling problem baked in. This lesson connects the rule to the topology, then shows you exactly how badly it grows.
+
+## A quick recap: the split-horizon rule
+
+Here is the rule again, stated plainly: **a route a router learns from one iBGP peer is never re-advertised to another iBGP peer.**
+
+Why does this rule exist? iBGP runs *inside* a single AS, and BGP's normal loop-prevention mechanism, the AS_PATH, does not change as a route moves between routers in the same AS. The AS number is only prepended at the *edge* of the AS, not on every internal hop. So inside one AS there is no growing AS_PATH to catch a loop. To stop routes from circulating forever, BGP simply forbids the relay: what you hear over iBGP, you keep to yourself.
+
+Now watch what that does to three routers. Say **r1** learns an external prefix from an eBGP neighbor and advertises it to **r2** over iBGP. Will **r3** learn that prefix from r2? No. The route reached r2 over iBGP, so r2 will **not** pass it along to another iBGP peer. r3 stays in the dark.
+
+There is exactly one fix: **r1 must peer with r3 directly.** Then r1 advertises the prefix to both r2 and r3 itself, and nobody has to relay anything. Extend that logic to every router and every prefix, and you arrive at an unavoidable conclusion: **every iBGP speaker must peer with every other iBGP speaker.** That is a **full mesh**.
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="iBGP inside one AS"
+  nodes={[
+    { id: "r1", name: "r1", col: 1, row: 0 },
+    { id: "r2", name: "r2", col: 2, row: 1 },
+    { id: "r3", name: "r3", col: 1, row: 2 },
+    { id: "r4", name: "r4", col: 0, row: 1 },
+  ]}
+  links={[
+    { from: "r1", to: "r2" },
+    { from: "r1", to: "r3" },
+    { from: "r1", to: "r4" },
+    { from: "r2", to: "r3" },
+    { from: "r2", to: "r4" },
+    { from: "r3", to: "r4" },
+  ]}
+  legend="iBGP session (all peers in the same AS)"
+  caption={<>Four routers, one AS, and <em>every</em> pair joined by an iBGP session. With no relaying allowed, the only way for all of them to hear the same prefix is to peer directly. Notice how dense the mesh already looks at just four nodes.</>}
+/>
+
+## The scaling problem
+
+A full mesh is conceptually clean, but count the sessions. With **n** routers, every router peers with every other one, which gives **n(n-1)/2** distinct iBGP sessions. That `/2` is just because the session between r1 and r2 is the *same* session as the one between r2 and r1; you count each pair once.
+
+The trouble is the **n squared** shape of that formula. It starts small and then runs away from you:
+
+| Routers (n) | iBGP sessions n(n-1)/2 |
+|---|---|
+| 3 | 3 |
+| 5 | 10 |
+| 10 | 45 |
+| 50 | 1225 |
+| 100 | 4950 |
+
+Read down that table and feel the curve bend. Doubling from 50 to 100 routers does not double the session count; it nearly **quadruples** it. And the operational cost is worse than the raw number suggests, because:
+
+- **Every new router adds a session to every existing router.** Router number 51 does not add one session, it adds 50.
+- **Each session must be configured on both ends.** Adding that router means touching the config of all 50 routers that already exist, not just the new one.
+
+For a large service-provider or data-center network with hundreds of BGP speakers, a literal full mesh becomes unmanageable: thousands of sessions to configure, monitor, and keep consistent. It simply does not scale.
+
+## So why teach the full mesh at all?
+
+Because for the networks you will actually build in this module, the full mesh is **the correct, simplest answer**. It is exactly what you configure in the upcoming labs, and it is genuinely fine in practice for a handful of routers. Three or four internal speakers means three or six sessions: trivial to set up and reason about. You do not reach for a fancier design until the session count starts to hurt, and at small scale it never does.
+
+So the full mesh is not a strawman you will throw away. It is the real, working foundation. The scaling formula above is the thing that tells you *when* you have outgrown it.
+
+## When you outgrow it: a preview
+
+When a full mesh gets too big, operators reach for one of two well-known solutions. You will not configure either one here, but it helps to know their names and the core idea behind each:
+
+- **Route reflectors.** You designate one router (a route reflector) that *is* allowed to break the split-horizon rule: it re-advertises iBGP-learned routes to its **clients**. The clients then only need a session to the reflector instead of to every other router, which collapses the mesh into something close to a hub-and-spoke shape.
+- **Confederations.** You split one big AS into several smaller **sub-ASes**. Inside each sub-AS you still run a (much smaller) full mesh, and the sub-ASes talk to each other with a special internal form of eBGP, which keeps each individual mesh tractable.
+
+Both of these belong to a later, more advanced **Production BGP** path, not to these fundamentals. For now, just file them away as "the escape hatches for when n(n-1)/2 gets scary."
+
+## What's next
+
+You now know *why* iBGP demands a full mesh (the split-horizon rule leaves no alternative) and exactly how that mesh grows: **n(n-1)/2** sessions, an n-squared curve that is fine for a few routers and brutal for hundreds. Next, in **`bgp-loopback-peering-and-igp`**, we will make those iBGP sessions resilient by peering on **loopback addresses** instead of physical interfaces, and see why that trick needs an IGP running underneath.

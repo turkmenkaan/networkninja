@@ -1,0 +1,74 @@
+# Peering on Loopbacks (and Why You Need an IGP)
+
+You now know that iBGP needs a full mesh: every router in the AS holds a session to every other router. But there's a question hiding inside that rule that nobody asked yet. **Between which two addresses does each session actually run?** Get this wrong and your sessions flap every time a cable hiccups. Get it right, and your iBGP mesh becomes nearly indestructible. The answer, in one word: **loopbacks**.
+
+## A physical interface is a single point of failure
+
+Picture two routers in your AS, r1 and r2, joined by two physical links for redundancy. You could build the iBGP session between the addresses on one of those links, say `10.0.12.1` to `10.0.12.2`. It works fine, until that one link goes down. The moment the cable dies, the interface goes down, its IP address disappears, the TCP connection underneath BGP breaks, and the session drops. Your *other* healthy link sits right there, unused, while iBGP declares the peer dead.
+
+That's the flaw: **an interface address lives and dies with one physical link.** A session built on it inherits that fragility.
+
+A **loopback interface** is the cure. A loopback is a virtual interface that is **always up** and is **not tied to any single physical link**. As long as the router is alive and *any* path to it exists, its loopback address is reachable. Build the iBGP session between loopbacks (say `1.1.1.1` to `2.2.2.2`) and it survives any single link failure: if one cable dies, the TCP connection simply reroutes over the surviving link and the session never notices. This is why iBGP sessions are configured between **loopback addresses**, not interface addresses.
+
+<ASTopology
+  eyebrow="One AS: OSPF underlay, iBGP overlay"
+  nodeShape="router"
+  nodes={[
+    { id: "r1", name: "r1", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
+    { id: "r2", name: "r2", sublabel: "lo 2.2.2.2/32", col: 2, row: 0 },
+    { id: "r3", name: "r3", sublabel: "lo 3.3.3.3/32", col: 1, row: 1 },
+  ]}
+  links={[
+    { from: "r1", to: "r2" },
+    { from: "r1", to: "r3" },
+    { from: "r2", to: "r3" },
+  ]}
+  legend="solid links = OSPF-routed internal links (the underlay)"
+  caption={<>OSPF advertises every router's <strong>/32 loopback</strong> plus the internal links, so each router can reach every loopback. The iBGP full mesh then rides on top, peering loopback to loopback. The IGP is the <em>underlay</em>; iBGP is the <em>overlay</em>.</>}
+/>
+
+## You have to tell BGP to use the loopback
+
+Configuring loopback peering takes one extra step that trips up almost everyone the first time. When BGP opens its TCP connection to a neighbor, it sources packets from the **outgoing physical interface** by default, not from your loopback. So even though you typed the neighbor's loopback as the peer address, the packets leave with the *wrong source address*. The peer sees a connection arriving from an address it wasn't told to expect, and it **rejects the session**.
+
+The fix, in FRR, is `update-source`:
+
+```
+router bgp 65001
+ neighbor 2.2.2.2 remote-as 65001
+ neighbor 2.2.2.2 update-source lo
+```
+
+`neighbor 2.2.2.2 update-source lo` tells BGP: "for this session, source your packets from the `lo` interface." Now r1's packets leave with source `1.1.1.1`, exactly the address r2 expects, and the session forms. **Both ends** need it: r2 needs `neighbor 1.1.1.1 update-source lo` to match. The rule of thumb is simple: if you peer on a loopback, you set `update-source` on that loopback.
+
+## Loopbacks aren't directly connected: enter the IGP
+
+Here's the catch that makes loopback peering more than a one-liner. Two interface addresses on a shared link are **directly connected**: r1 already knows how to reach `10.0.12.2`, it's right there on the wire. But `1.1.1.1` and `2.2.2.2` are **not** directly connected to anything. They're floating /32 addresses sitting inside each router. Before r1 can even open a TCP connection to `2.2.2.2`, it must have a **route** to `2.2.2.2`. Otherwise the session never gets off the ground, because TCP/179 can't reach a destination the router can't route to.
+
+So something has to distribute those loopbacks across the AS. That something is an **Interior Gateway Protocol (IGP)**: OSPF or IS-IS, running inside the AS. You configure the IGP to advertise every router's loopback (the /32s) along with the internal links, and it floods that reachability to every router. Now r1 has a route to `2.2.2.2`, r2 has a route to `1.1.1.1`, and so on for the whole mesh. **Full loopback reachability is the precondition for loopback peering**, and the IGP is what delivers it.
+
+This is the mental model worth keeping: **the IGP is the underlay, iBGP is the overlay.** The IGP's job is plumbing, get every loopback reachable from every other router. iBGP then rides *on top* of that plumbing, peering loopback to loopback without caring which physical path the packets actually take.
+
+## The standard recipe
+
+Put together, building an iBGP core always follows the same three steps:
+
+1. **Run an IGP** (OSPF or IS-IS) that advertises every router's loopback plus all internal links.
+2. **Confirm full reachability:** every router can now `ping` every other router's loopback.
+3. **Build the iBGP full mesh on loopbacks**, with `update-source <loopback>` on every session, both ends.
+
+Underlay first, overlay second. If iBGP sessions won't come up, the very first thing to check is whether the underlay actually delivers loopback reachability.
+
+## A nice bonus: no `ebgp-multihop` needed
+
+If you've met eBGP, you may remember that eBGP peers are expected to be **directly connected**: eBGP sets the IP TTL on its packets to 1, so a session between non-adjacent eBGP routers needs `ebgp-multihop` to raise that TTL. You might expect loopback peering, which is inherently multi-hop, to need the same workaround.
+
+It doesn't. **iBGP is not TTL-1-limited the way eBGP is.** iBGP fully expects its peers to be multiple hops away across the internal network, so loopback peering "just works" the moment the IGP provides reachability. No `ebgp-multihop`, no TTL tweaks, nothing extra.
+
+## One thing the IGP also has to carry
+
+There's a subtlety we're planting here and harvesting in a later lab. The IGP doesn't only advertise loopbacks so sessions can form. It also has to make BGP's **next-hop** addresses reachable, because a route is only usable if the router can actually reach the next-hop it points to. When external routes enter your AS, their next-hop is often an address your internal routers can't reach, and the session being up won't save you. That's the **next-hop-self** problem, and you'll fix it hands-on soon. For now, just file away that the IGP underlay carries two things: loopbacks *and* the next-hops your BGP routes depend on.
+
+## What's next
+
+You've got the why and the how: peer iBGP on always-up loopbacks for resilience, set `update-source` so the session sources from the right address, and run an IGP underlay so every loopback (and every next-hop) is reachable. Time to build it. In **`bgp-ibgp-peering`**, you'll stand up loopback-to-loopback iBGP over an OSPF underlay and watch the sessions reach `Established` across loopbacks for real.
