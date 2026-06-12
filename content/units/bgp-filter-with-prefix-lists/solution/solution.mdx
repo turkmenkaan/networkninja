@@ -1,0 +1,41 @@
+# Solution: Filter Inbound Routes with a Prefix List
+
+The lab is complete when `r2` accepts only the customer's two legitimate allocations (`203.0.113.0/24` and `198.51.100.0/24`) and drops the `10.0.0.0/8` bogon. All of the work happens on `r2`; `r1` is the customer and is left unchanged.
+
+## r2 (AS 65002)
+
+```
+ip prefix-list CUSTOMER-IN seq 5 permit 203.0.113.0/24
+ip prefix-list CUSTOMER-IN seq 10 permit 198.51.100.0/24
+!
+router bgp 65002
+ neighbor 10.0.12.1 prefix-list CUSTOMER-IN in
+```
+
+The complete resulting configs are in `solution/r2/frr.conf` (and the unchanged customer in `solution/r1/frr.conf`).
+
+## Why it works
+
+- The prefix-list `CUSTOMER-IN` has two `permit` entries, one for each prefix you actually trust from the customer.
+- **The implicit deny does the rejecting.** Every prefix-list ends with a hidden `deny any`. `10.0.0.0/8` matches neither permit entry, so it falls through to that implicit deny and is dropped on the way in. You never had to write a single `deny` line.
+- Entries are evaluated in ascending `seq` order, first match wins. The gap between `seq 5` and `seq 10` leaves room to insert more permits later without renumbering.
+- Applying the list with `neighbor 10.0.12.1 prefix-list CUSTOMER-IN in` filters routes the customer sends *to* `r2`. The `in` direction is what makes this an ingress filter; an `out` list would instead govern what `r2` advertises to the customer.
+
+## The soft-reset note
+
+A prefix-list applied after the session is already up does not retroactively scrub routes you already accepted. FRR keeps a copy of the neighbor's received updates, so you re-run inbound policy against them with an inbound soft-clear:
+
+```
+r2# clear ip bgp 10.0.12.1 in
+```
+
+This re-evaluates the stored updates and removes the now-filtered `10.0.0.0/8` without bouncing the session. (Because the configs in this lab ship the prefix-list from boot, a freshly deployed lab applies it on the first exchange; the soft-clear matters when you add or change the filter on a live session, as you do in Step 2.)
+
+## Verifying
+
+```
+r2# show ip bgp 203.0.113.0/24 json
+r2# show ip bgp json
+```
+
+The checks assert that `203.0.113.0/24` is present (its `paths` array exists) and that `r2`'s table holds exactly the two legitimate prefixes, so `10.0.0.0/8` is absent.

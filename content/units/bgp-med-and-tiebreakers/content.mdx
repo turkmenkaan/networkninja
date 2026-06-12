@@ -1,0 +1,135 @@
+# MED and the Tie-Breaker Ladder
+
+You run AS 65001, and you have **two** links to the same upstream, AS 65002. Both links work. Both carry the same prefix. But you would rather your neighbor send their return traffic for `1.1.1.1/32` back to you over **link1**, not link2 (maybe link1 is fatter, cheaper, or just less congested).
+
+The catch: that decision is made on **their** router, not yours. So how do you influence a choice that happens inside someone else's AS? You give them a hint. That hint is **MED**, the Multi-Exit Discriminator, and lower MED wins.
+
+In this lab r1 already peers with r2 over both links and advertises `1.1.1.1/32` on each. You will attach a low MED to the link1 advertisement and a high MED to the link2 advertisement, then watch r2 pick link1.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "lo 2.2.2.2/32", col: 1, row: 0 },
+  ]}
+  links={[
+    { from: "r1", to: "r2", label: "link1 - 10.0.12.0/24" },
+    { from: "r1", to: "r2", label: "link2 - 10.0.34.0/24" },
+  ]}
+  legend="Two parallel eBGP links: link1 10.0.12.0/24 (eth1), link2 10.0.34.0/24 (eth2)"
+  caption={<>Two eBGP sessions between the same pair of routers, one per link. r1 advertises 1.1.1.1/32 over both, so r2 sees two equal candidate paths and has to break the tie.</>}
+/>
+
+Both eBGP sessions and r1's `network 1.1.1.1/32` are **already configured**. The MED policy is the part you will add.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots both routers. r2 is the one making the decision, so drop into its FRR shell:
+
+```bash
+docker exec -it clab-bgp-med-and-tiebreakers-r2 vtysh
+```
+
+## Step 1: Observe the default choice
+
+On `r2`, look at what it knows about `1.1.1.1/32`:
+
+```
+r2# show ip bgp 1.1.1.1/32
+```
+
+You should see **two** paths, one with a next hop of `10.0.12.1` (link1) and one with `10.0.34.1` (link2). Both have AS_PATH `65001`. Neither carries a MED yet, so r2 falls all the way down the tie-breaker ladder to decide, and the `>` marker (best path) lands on whichever entry won by router-id or arrival order. That is arbitrary, and arbitrary is exactly what we want to replace with intent.
+
+## Step 2: Set a low MED on link1, a high MED on link2
+
+The MED lives on the **advertiser**, r1, and is set **outbound** per neighbor. Open `r1` in another terminal:
+
+```bash
+docker exec -it clab-bgp-med-and-tiebreakers-r1 vtysh
+```
+
+Build two outbound route-maps, a low metric toward the link1 neighbor and a high metric toward the link2 neighbor, then apply them:
+
+```
+r1# configure terminal
+r1(config)# route-map MED-LOW permit 10
+r1(config-route-map)# set metric 50
+r1(config-route-map)# exit
+r1(config)# route-map MED-HIGH permit 10
+r1(config-route-map)# set metric 200
+r1(config-route-map)# exit
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 10.0.12.2 route-map MED-LOW out
+r1(config-router)# neighbor 10.0.34.2 route-map MED-HIGH out
+r1(config-router)# end
+r1# write memory
+```
+
+In FRR, `set metric` **is** the MED. Now push the updated advertisements so r2 re-learns the prefix with the new attribute:
+
+```
+r1# clear bgp * out
+```
+
+(`clear bgp * soft out` works too; either resends your outbound routes without bouncing the sessions.)
+
+## Step 3: Verify r2 prefers the lower-MED link
+
+Back on `r2`, look again:
+
+```
+r2# show ip bgp 1.1.1.1/32
+```
+
+Both paths are still there, but now the link1 entry carries a metric of `50` and the link2 entry carries `200`. Because lower MED wins, the best-path marker `>` should sit on the `10.0.12.1` (link1) entry. You can confirm what r2 will actually use for forwarding:
+
+```
+r2# show ip route 1.1.1.1/32
+```
+
+The installed next hop should be `10.0.12.1`.
+
+✅ **Objective:** r2 has both paths for `1.1.1.1/32`, and its best path is the lower-MED link1 entry (next hop `10.0.12.1`).
+
+## Where MED sits on the tie-breaker ladder
+
+MED is just one rung. When BGP compares paths to the same prefix it walks a fixed ladder and stops at the first attribute that differs. The high rungs (weight, LOCAL_PREF, AS_PATH length, origin) come first; only when paths are still tied does it reach MED, and below MED there is more ladder still:
+
+1. **MED** (this lab): lower wins, and by default it is compared **only among paths from the same neighbor AS**, which is exactly the case here (both came from AS 65002... actually both came from AS 65001 into AS 65002, the same neighbor AS from r2's view).
+2. **eBGP over iBGP**: a route learned from an external peer beats one learned internally.
+3. **Lowest IGP metric to the next hop**: prefer the path whose next hop is closest in your IGP.
+4. **Oldest eBGP route**: the longest-established path wins (a stability tie-breaker).
+5. **Lowest router-id**, then **lowest neighbor IP**: the final deterministic tie-breakers when nothing else separates the paths.
+
+That bottom of the ladder (router-id, neighbor IP) is precisely what was deciding r2's "default" choice in Step 1 before you gave it a MED to compare. For the full ordering from the top, see `bgp-best-path-algorithm`.
+
+## Troubleshooting
+
+- **MED looks backwards?** Remember **lower MED wins**. If r2 prefers link2, you likely set the low metric on the wrong neighbor. The low metric goes out the link1 neighbor (`10.0.12.2`).
+- **r2 ignores the MED entirely?** By default BGP only compares MED **between paths from the same neighbor AS**. That holds here (both paths originate in AS 65001 and arrive at r2 from that same neighbor AS), so no extra knob is needed. If you ever compare across different neighbor ASes you would need `bgp always-compare-med`.
+- **Set it in the wrong place?** MED is an **outbound** attribute set on the **advertiser** (r1), per neighbor. Setting a metric inbound on r2, or globally, will not produce the per-link split this lab wants.
+- **No change after applying the route-maps?** You probably need to resend the advertisements: run `clear bgp * out` (or `clear bgp * soft out`) on r1.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- **MED** (the BGP metric / Multi-Exit Discriminator) is how one AS suggests, to a neighbor AS with multiple entry points, which link to prefer. **Lower wins.**
+- MED is set **outbound on the advertiser**, per neighbor, typically with a `route-map ... set metric` applied `... out`.
+- By default MED is compared **only among paths from the same neighbor AS**, which is the multi-link-to-one-neighbor case you just built.
+- MED sits low on the **best-path tie-breaker ladder**, below weight, LOCAL_PREF, AS_PATH length, and origin, and above the eBGP-over-iBGP, IGP-metric, oldest-route, and router-id rungs.
+
+**Next:** put every path attribute together and prove you can steer traffic end to end in the `bgp-path-selection-capstone` challenge.

@@ -1,0 +1,107 @@
+# Route Maps: the Policy Swiss Army Knife
+
+You have already used route-maps without fully meeting them. Every time you set LOCAL_PREF on an inbound neighbor, prepended an AS_PATH, or stamped a MED on the way out, a route-map was doing the work. It is time to look the tool in the eye, because once you understand how a route-map actually thinks, every BGP policy you will ever write becomes the same small set of moves.
+
+A route-map is the most general policy tool BGP gives you. A prefix-list can only answer "is this prefix in my list, yes or no?" A route-map can ask several questions at once and then *change* the route on its way through. It is the Swiss Army knife: filtering is just one of its blades.
+
+## The big idea: match, set, permit or deny
+
+A route-map is an **ordered list of clauses**. Each clause is written as:
+
+```
+route-map NAME permit|deny SEQ
+ match <condition>
+ set   <action>
+```
+
+Three things are happening in every clause, and keeping them straight is the whole game:
+
+- **`match`** selects which routes this clause applies to. No match line means "match everything."
+- **`set`** modifies the routes that matched (attributes like LOCAL_PREF, MED, communities).
+- **`permit` or `deny`** decides the fate of a matched route: keep it (and apply the sets) or drop it.
+
+So MATCH selects, SET modifies, and permit/deny decides keep-or-drop. Hold onto that sentence.
+
+## How a route is processed
+
+When a route enters a route-map, the router walks the clauses **by sequence number, ascending**. The first clause whose `match` succeeds **wins**, and processing stops there:
+
+- A **permit** clause that matches applies its `set` actions and **accepts** the route.
+- A **deny** clause that matches **drops** the route immediately, no sets, no further clauses.
+- A clause with **no `match` line matches everything**, so it acts as a catch-all.
+- If no clause matches, there is an **implicit deny** at the very end, and the route is dropped.
+
+<HierarchyTree
+  eyebrow="Route-map processing, one route at a time"
+  nodes={[
+    { id: "in", label: "Route enters route-map", tier: 0 },
+    { id: "s10", label: "seq 10: match? ", tier: 1 },
+    { id: "s10y", label: "yes -> apply sets, permit/deny, STOP", tier: 2 },
+    { id: "s20", label: "seq 20: match? (only if 10 missed)", tier: 1 },
+    { id: "s20y", label: "yes -> apply sets, permit/deny, STOP", tier: 2 },
+    { id: "end", label: "no clause matched -> implicit DENY (drop)", tier: 2, highlight: true },
+  ]}
+  edges={[
+    { from: "in", to: "s10" },
+    { from: "s10", to: "s10y" },
+    { from: "s10", to: "s20" },
+    { from: "s20", to: "s20y" },
+    { from: "s20", to: "end" },
+  ]}
+  caption={<>Clauses run in ascending sequence order. The first matching clause decides the route's fate and processing halts. Nothing falls through past a match.</>}
+/>
+
+This is why a trailing `route-map NAME permit 9999` with no `match` line is such a common idiom: it is the "permit the rest" clause. Without it, the implicit deny at the end quietly discards every route you did not explicitly permit higher up.
+
+## The two halves: matches and sets
+
+Most of route-map fluency is just knowing the common `match` conditions and `set` actions. They pair up like this:
+
+| `match` (select the route)            | `set` (modify the route)                  |
+| -------------------------------------- | ------------------------------------------ |
+| `ip address prefix-list NAME`          | `local-preference <value>`                 |
+| `as-path access-list NAME`             | `metric <value>` (this is MED)             |
+| `community NAME`                       | `as-path prepend <asn> <asn> ...`          |
+| `ip next-hop ...`                      | `community <value>` (add or replace)       |
+| `metric <value>`                       | `origin igp | egp | incomplete`            |
+|                                        | `weight <value>`                           |
+
+A clause can stack several matches (all must succeed) and several sets (all are applied). The left column decides *who* the policy hits; the right column decides *what happens to them*.
+
+## Attaching a route-map to a neighbor
+
+A route-map does nothing until you hang it on a neighbor in a direction:
+
+```
+router bgp 65001
+ neighbor 203.0.113.2 route-map CUSTOMER-IN  in
+ neighbor 203.0.113.2 route-map CUSTOMER-OUT out
+```
+
+You get **one inbound and one outbound** route-map per neighbor per direction. `in` filters and rewrites routes you *receive* from that peer before they reach your table; `out` filters and rewrites routes you *advertise* to that peer. That is exactly the placement you used for LOCAL_PREF (inbound, on the preferred upstream) and for AS_PATH prepend and MED (outbound, to make yourself look worse to the neighbor).
+
+## A worked example
+
+Here is a complete inbound policy for a customer. You want to accept only an approved set of prefixes and give them a high LOCAL_PREF so you always prefer the customer's own routes, while still accepting everything else at the default preference:
+
+```
+ip prefix-list ALLOW seq 5 permit 198.51.100.0/24
+
+route-map CUSTOMER-IN permit 10
+ match ip address prefix-list ALLOW
+ set local-preference 200
+
+route-map CUSTOMER-IN permit 20
+```
+
+Read it through the processing model. A route for `198.51.100.0/24` hits clause `10`, matches the prefix-list, gets `local-preference 200`, and is permitted. Any other route misses clause `10` and falls to clause `20`, which has no `match` and therefore matches everything, permitting it at the default LOCAL_PREF of 100. Clause `20` is the "permit the rest" idiom, and it is the only reason routes outside `ALLOW` survive at all.
+
+## The catch that bites everyone
+
+Delete clause `20` from that example and watch what happens. Clause `10` still permits `198.51.100.0/24`, but every other prefix this customer sends now falls off the end into the **implicit deny** and is silently dropped. No error, no log line you will notice, just a neighbor whose routes mysteriously vanished from your table.
+
+This is the single most common route-map mistake: a route-map referenced on a neighbor that ends in implicit deny becomes a blackhole for everything you did not explicitly permit. Whenever you write a route-map whose job is to *modify* a few routes rather than *filter* them, ask yourself the question that saves the day: where is my permit-the-rest clause? If you only wanted to tweak some routes, the trailing `permit` is not optional.
+
+## What's next
+
+You now have the universal policy tool: ordered clauses, match to select, set to modify, permit or deny to decide, and a trailing permit so you do not blackhole yourself. The matches and sets above referenced one attribute you have not formally met yet, the BGP **community**, a tag you can stamp on routes and match on later to drive policy at scale. That is the subject of **`bgp-communities`**, where the route-map you just learned becomes the engine for tag-based routing policy across an entire AS.

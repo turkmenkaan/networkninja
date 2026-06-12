@@ -1,0 +1,67 @@
+# AS_PATH and NEXT_HOP in Best-Path
+
+You already know BGP carries a bag of path attributes on every route. Two of them are **well-known mandatory**, meaning every BGP speaker must understand them and every UPDATE must include them: **AS_PATH** and **NEXT_HOP**. They are also the two attributes you will stare at most often when you debug a real network, because one decides *which* path wins and the other decides whether a path is even allowed to compete. Let's give each its proper job.
+
+## AS_PATH: the road and the referee
+
+The AS_PATH is the ordered list of autonomous systems a route has traversed. When an AS re-advertises a prefix to an eBGP neighbor, it **prepends its own ASN** to the front of the list. Receive a route and the path reads back, left to right, as the sequence of ASes between you and the origin.
+
+<ASPathFlow
+  eyebrow="AS_PATH grows at each hop"
+  prefix="198.51.100.0/24"
+  hops={["AS 65010", "AS 65020", "AS 65030"]}
+  showGrowingPath
+  caption={<>The prefix originates in AS 65010. Each AS that re-advertises it prepends its own ASN, so by AS 65030 the path reads "65030 65020 65010": the whole road back to the origin.</>}
+/>
+
+That single list pulls double duty. AS_PATH has **two jobs**, and you should keep them separate in your head.
+
+**Job one: loop prevention.** Before a router accepts an incoming eBGP route, it scans the AS_PATH for its own ASN. If it finds itself already in the path, it **rejects the route outright**. The reasoning is airtight: if your ASN is in there, this advertisement already passed through you once, so accepting it would close a loop. No metric counting up to infinity, no hold-down timers, just an inspection of the path.
+
+**Job two: best-path tie-breaking.** When two valid paths reach the same prefix, BGP prefers the one with the **shorter AS_PATH**, on the logic that fewer ASes traversed is closer to the origin. AS_PATH length sits high in the best-path decision list, just below locally controlled attributes, so in practice it is one of the most common reasons one path beats another.
+
+These two jobs can pull against each other, and operators exploit that on purpose. **AS path prepending** deliberately stuffs extra copies of your own ASN into the path to make it *longer*, so neighbors see that path as less attractive and prefer a different entry point into your network. You will configure prepending yourself later in **`bgp-as-path-prepend`**; for now, just hold the idea that a longer AS_PATH is a path you are nudging traffic away from.
+
+## NEXT_HOP: where to actually send the packet
+
+AS_PATH tells you *which ASes* a route crosses, but not the IP address to forward the packet toward. That is the **NEXT_HOP** attribute: the next-hop IP for reaching the prefix. The rules for how it gets set are where engineers trip up, so be precise.
+
+- Over **eBGP**, the advertising router rewrites NEXT_HOP to **itself**, normally the address on the link facing the neighbor. Your eBGP peer hands you a next hop you can reach directly across the shared subnet.
+- Over **iBGP**, the router **does not change NEXT_HOP by default**. It passes along whatever value it received. So when an eBGP-learned route is reflected to an iBGP peer deep inside your AS, that peer still sees the *external* router's address as the next hop, an address it may have no route to.
+
+That iBGP behavior is exactly the trap **`next-hop-self`** solves: you tell the border router to overwrite NEXT_HOP with its own (usually loopback) address before sending the route to iBGP peers, so every internal router points at something it can actually reach over the IGP.
+
+### Reachability is a precondition for best-path
+
+Here is the part that ties NEXT_HOP straight into best-path selection. A BGP route is only a **valid candidate** if its NEXT_HOP is **reachable**. BGP does a **recursive lookup** in the RIB: it takes the NEXT_HOP IP, asks "do I have a route to *that* address?", and resolves it down to a real outgoing interface and link next hop.
+
+<ASTopology
+  eyebrow="NEXT_HOP must resolve in the RIB"
+  nodeShape="router"
+  nodes={[
+    { id: "ext", name: "eBGP peer", col: 0, row: 0 },
+    { id: "border", name: "Border", col: 1, row: 0 },
+    { id: "core", name: "Core (iBGP)", col: 2, row: 0 },
+  ]}
+  links={[
+    { from: "ext", to: "border" },
+    { from: "border", to: "core" },
+  ]}
+  legend="NEXT_HOP carried inward by iBGP"
+  caption={<>Without next-hop-self, Core learns the prefix with the eBGP peer's address as NEXT_HOP. If Core has no IGP route to that address, the recursive lookup fails, the route is marked inaccessible, and it never reaches best-path.</>}
+/>
+
+If that recursive lookup **fails**, BGP marks the path **inaccessible** and the route cannot be installed or chosen as best. In FRR you will see it flagged without the `>` best marker (and often with `r RIB-failure` or an inaccessible note) in `show ip bgp`. So before AS_PATH length or any other attribute even gets a vote, the NEXT_HOP gate runs first: an unreachable next hop knocks the path out of the running entirely.
+
+## Where this shows up
+
+Both attributes are early, decisive steps in the best-path algorithm you will walk end to end shortly:
+
+- **NEXT_HOP reachability** is a *precondition*. Fail it and the path is never a candidate.
+- **AS_PATH length** is a *tie-breaker* among the candidates that survive, prized just under the locally configured attributes.
+
+You will feel both in the **multi-homing labs**. With two upstream providers, you often receive the *same* prefix from each, and AS_PATH length is frequently what decides which provider you use outbound. Meanwhile, every one of those paths only counts if its NEXT_HOP resolves, which is why a forgotten `next-hop-self` on a border router can silently blackhole prefixes your core "learned" but can never actually use.
+
+## What's next
+
+You have the two mandatory attributes that gate and rank paths. Next, in **`bgp-local-pref-and-med`**, you meet the two attributes operators reach for first to *steer* traffic on purpose: LOCAL_PREF for choosing your outbound exit, and MED for hinting to a neighbor how to send traffic back in.

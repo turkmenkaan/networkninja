@@ -1,0 +1,50 @@
+# Objectives + verification for bgp-influence-local-pref.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY: the JSON paths below are schema-derived from FRR's `show ip bgp <prefix>
+# json` output, NOT yet run through a live FRR for this lab. Confirm them on a real
+# deploy before relying on the Tier-2 grader (see the TO-CONFIRM note on objective 2).
+
+objectives:
+  - id: prefix-learned-from-both
+    description: "r1 learns 100.64.0.0/24 from both upstreams (two paths in the BGP table)."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-influence-local-pref-r1 vtysh -c 'show ip bgp 100.64.0.0/24'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp 100.64.0.0/24 json'"
+      parse: json
+      assert:
+        path: "$.paths"
+        exists: true
+    hint: >
+      Both upstreams originate 100.64.0.0/24, so r1 should hold two paths for it,
+      one via 10.0.12.2 (r2, AS 65002) and one via 10.0.13.3 (r3, AS 65003). If you
+      see fewer, check that both eBGP sessions are Established
+      (`show ip bgp summary`) and that `no bgp ebgp-requires-policy` is set.
+
+  - id: prefers-upstream-a-via-localpref
+    description: "r1's best path for 100.64.0.0/24 is via upstream A (r2, AS 65002), chosen by LOCAL_PREF."
+    display_command: "docker exec -it clab-bgp-influence-local-pref-r1 vtysh -c 'show ip bgp 100.64.0.0/24'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp 100.64.0.0/24 json'"
+      parse: json
+      # FRR lists paths best-first, so paths[0] is the chosen best path. Its
+      # aspath.string should be just the upstream-A AS, 65002.
+      assert:
+        path: "$.paths[0].aspath.string"
+        equals: "65002"
+      # TO-CONFIRM (alternative / additional assertion on a real deploy):
+      #   path: "$.paths[0].locPrf"
+      #   equals: 200
+      # i.e. the best path also carries the LOCAL_PREF you set. Verify the exact
+      # field name (locPrf) and that it is an integer once you deploy.
+    hint: >
+      LOCAL_PREF is compared BEFORE AS_PATH length in the best-path algorithm, and
+      HIGHER wins. Set local-preference 200 in an inbound route-map on the r2
+      neighbor (`neighbor 10.0.12.2 route-map ... in`), then `clear ip bgp *` (or a
+      soft inbound reset) so the route is re-evaluated with the new value.

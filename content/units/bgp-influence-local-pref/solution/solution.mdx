@@ -1,0 +1,44 @@
+# Solution: Steer Outbound Traffic with LOCAL_PREF
+
+The lab is complete when r1's best path for `100.64.0.0/24` exits via upstream A (`r2`, AS 65002) because that path carries a higher LOCAL_PREF. The only configuration needed is on `r1`: an inbound route-map that sets LOCAL_PREF, applied to the r2 neighbor.
+
+## r1 (AS 65001)
+
+```
+route-map PREFER-UPSTREAM-A permit 10
+ set local-preference 200
+!
+router bgp 65001
+ neighbor 10.0.12.2 route-map PREFER-UPSTREAM-A in
+```
+
+Then re-evaluate the routes already learned:
+
+```
+r1# clear ip bgp *
+```
+
+`r2` and `r3` need no changes; they were pre-configured to originate `100.64.0.0/24`. The complete resulting configs are in `solution/r1/frr.conf`, `solution/r2/frr.conf`, and `solution/r3/frr.conf`.
+
+## Why LOCAL_PREF is the AS-wide outbound lever
+
+- **It is checked first.** In the BGP best-path algorithm, LOCAL_PREF is compared near the very top, before AS_PATH length, MED, or any origin/tie-breaker rule. Once one path has a higher LOCAL_PREF, the comparison stops there. Here 200 beats the default 100, so the r2 path wins outright and the equal AS_PATH lengths never matter.
+- **Higher wins.** Unlike MED (where lower is better), LOCAL_PREF prefers the larger value. Setting 200 on the r2 path makes it the winner; setting something below 100 would have pushed traffic to r3 instead.
+- **It governs OUTBOUND traffic.** LOCAL_PREF decides which exit *your* AS uses to send packets out. It does not influence what other ASes do, which is the job of AS_PATH prepending or MED (the next labs).
+- **It is AS-wide and never leaves the AS.** LOCAL_PREF is carried in iBGP updates so every router inside your AS agrees on the same exit, but it is stripped on eBGP advertisements, so it can never leak to a neighbor. That combination is exactly why it is the canonical tool for "make my whole AS prefer this upstream."
+- **Apply it inbound, on the preferred neighbor.** You tag routes as they arrive (`route-map ... in`) from the upstream you want to favor. A `permit` clause with a `set` and no `match` applies the `set` to every prefix from that neighbor.
+
+## Verifying
+
+```
+r1# show ip bgp 100.64.0.0/24 json
+```
+
+The checks assert:
+
+```
+$.paths            exists            (the prefix is learned from both upstreams)
+$.paths[0].aspath.string == "65002"  (best path is via upstream A, r2)
+```
+
+FRR lists paths best-first, so `paths[0]` is the chosen path; its AS_PATH being just `65002` confirms upstream A won. On a real deploy you can also confirm `$.paths[0].locPrf == 200` to show the best path carries the LOCAL_PREF you set (verify the exact field name when you run it live).

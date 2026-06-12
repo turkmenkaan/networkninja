@@ -1,0 +1,23 @@
+id: bgp-as-path-prepend
+type: lab
+title: "Steer Inbound Traffic with AS_PATH Prepending"
+summary: "Make one of two upstreams the preferred inbound path by prepending your own ASN on the advertisement you send the other."
+path: bgp-fundamentals
+module: path-attributes
+difficulty: intermediate
+estimated_minutes: 28
+prerequisites:
+  - lab-environment-setup
+  - bgp-influence-local-pref
+tags: [bgp, as-path-prepend, traffic-engineering, frr]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 4
+  est_ram_mb: 1024
+  images: [frrouting/frr]
+  est_boot_seconds: 30
+
+status: published
+version: 1

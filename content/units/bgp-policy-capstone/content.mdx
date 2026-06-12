@@ -1,0 +1,103 @@
+# Capstone: Build an ISP Edge Policy
+
+You run **AS 65002**, a small ISP. You have a **customer** below you (AS 65001) and an **upstream/transit** provider above you (AS 65003). This is the real job of a BGP edge router, and it is more than just bringing sessions up. Your customer is trustworthy but sloppy: alongside their two real allocations they are leaking `192.168.0.0/16`, RFC 1918 space that must never enter your routing table. Your policy has to catch it.
+
+Everything you learned in this module comes together here. You will **filter** with a prefix-list, **tag** accepted routes with a community, and **steer** path selection with `LOCAL_PREF`, all from a blank slate, all in one inbound policy on one session.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Your ISP, between a customer and an upstream"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "customer - leaks 192.168.0.0/16", col: 0, row: 1 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "YOU - lo 2.2.2.2/32", col: 1, row: 1 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "upstream - originates 8.8.8.0/24", col: 2, row: 1 },
+  ]}
+  links={[
+    { from: "r1", to: "r2", label: "10.0.12.0/24" },
+    { from: "r2", to: "r3", label: "10.0.23.0/24" },
+  ]}
+  legend="r2 (you) sits between the customer r1 and the upstream r3"
+  caption={<>r2 peers with the customer r1 on 10.0.12.0/24 (.1/.2) and with the upstream r3 on 10.0.23.0/24 (r2 .2, r3 .3). The customer originates 203.0.113.0/24 and 198.51.100.0/24 (its real space) plus 192.168.0.0/16 (a bogon leak). The upstream originates 8.8.8.0/24. Only r2 is yours to configure; r1 and r3 are already running.</>}
+/>
+
+Your router `r2` is a **blank slate**: it has interface and loopback addressing and nothing else, no `router bgp` block at all. The customer (`r1`) and the upstream (`r3`) are **already configured and running**; you do not touch them.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots all three routers. Drop into your router `r2`:
+
+```bash
+docker exec -it clab-bgp-policy-capstone-r2 vtysh
+```
+
+You can open the customer and the upstream the same way to inspect what they send, but you only **configure** `r2`:
+
+```bash
+docker exec -it clab-bgp-policy-capstone-r1 vtysh
+docker exec -it clab-bgp-policy-capstone-r3 vtysh
+```
+
+## Your mission
+
+Configure **only `r2`** so that:
+
+- It runs **eBGP to both neighbors**: `remote-as 65001` toward the customer (`10.0.12.1`) and `remote-as 65003` toward the upstream (`10.0.23.3`). Set `no bgp ebgp-requires-policy` so RFC 8212 does not silently filter your eBGP routes.
+- It **accepts only the customer's real prefixes**, `203.0.113.0/24` and `198.51.100.0/24`, and **drops the `192.168.0.0/16` leak**.
+- It **tags** every accepted customer route with community `65002:1000`, so you can recognize customer-originated routes anywhere in your network later.
+- It gives accepted customer routes **`LOCAL_PREF` 200** so they win against anything similar learned from the upstream.
+
+## Objectives
+
+- ✅ The eBGP session from `r2` to the customer `10.0.12.1` is **Established**.
+- ✅ The eBGP session from `r2` to the upstream `10.0.23.3` is **Established**.
+- ✅ `192.168.0.0/16` is **absent** from `r2`'s table, while `203.0.113.0/24` and `198.51.100.0/24` are present.
+- ✅ On `r2`, `203.0.113.0/24` has **LOCAL_PREF 200** and carries community **`65002:1000`**.
+
+## Stuck?
+
+Terse nudges only. This is your proof, so reach for these only when you need them.
+
+- **One prefix-list, two permits.** `ip prefix-list CUST-OK` permitting just the two real allocations. The implicit deny at the end is what drops the bogon, you do not write a deny line for it.
+- **One inbound route-map does filtering, tagging, and steering at once.** `match ip address prefix-list CUST-OK`, then `set local-preference 200` and `set community 65002:1000` in the same `permit` clause. Apply it `neighbor 10.0.12.1 route-map CUSTOMER-IN in`.
+- **No trailing permit clause this time.** Because the route-map is doing the filtering, you *want* the implicit deny to drop everything the prefix-list did not match. That is what kills `192.168.0.0/16`.
+- **Soft-clear after applying policy:** `clear ip bgp 10.0.12.1 in`.
+
+## Verify
+
+On your router `r2`, confirm both sessions are up:
+
+```
+r2# show ip bgp summary
+```
+
+Both `10.0.12.1` and `10.0.23.3` should reach **`Established`**. Then confirm the bogon is gone and the real prefixes survived:
+
+```
+r2# show ip bgp 192.168.0.0/16
+r2# show ip bgp 203.0.113.0/24
+```
+
+`192.168.0.0/16` should return `% Network not in table` (you filtered it), while `203.0.113.0/24` is present, shows **LocPrf 200**, and lists community **`65002:1000`** on its Community line.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- **An edge policy is filtering, tagging, and steering in one place.** A single inbound route-map matched a prefix-list, dropped a bogon via implicit deny, tagged what survived with a community, and raised its `LOCAL_PREF`, all on one session.
+- **Implicit deny is a feature.** When a route-map exists to filter, the absence of a trailing `permit` clause is exactly what removes the unwanted prefixes. Leaving one off was the right call here, the opposite of the tagging lab where you needed it.
+- **Communities are how you label intent at the edge** so the rest of your network can act on it without re-deriving where a route came from.
+- This is the real shape of a provider edge: trust nothing you receive, accept only what you agreed to carry, mark it, and prefer it deliberately.
+
+**Next:** you have completed the **BGP Fundamentals** path. You can bring up eBGP and iBGP, control path selection, and write real routing policy. From here, the natural next steps are scaling iBGP with route reflectors, BGP for data-center fabrics, and operational hardening, deeper paths that build directly on everything you just proved you can do.

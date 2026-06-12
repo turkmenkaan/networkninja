@@ -1,0 +1,51 @@
+# Solution: MED and the Tie-Breaker Ladder
+
+The goal is to make r2 (AS 65002) prefer the **link1** entry (`10.0.12.0/24`) for `1.1.1.1/32`. All of the configuration is on r1, the advertiser: attach a **low MED** to the link1 advertisement and a **high MED** to the link2 advertisement. Lower MED wins, so r2 chooses link1.
+
+## r1 (AS 65001)
+
+```
+route-map MED-LOW permit 10
+ set metric 50
+!
+route-map MED-HIGH permit 10
+ set metric 200
+!
+router bgp 65001
+ neighbor 10.0.12.2 route-map MED-LOW out
+ neighbor 10.0.34.2 route-map MED-HIGH out
+```
+
+After applying, resend the advertisements so r2 re-learns them with the new attribute:
+
+```
+r1# clear bgp * out
+```
+
+## r2 (AS 65002)
+
+No changes. r2 already has both eBGP sessions and simply receives the two advertisements. The MED comparison happens automatically during best-path selection.
+
+The complete resulting configs are in `solution/r1/frr.conf` and `solution/r2/frr.conf`.
+
+## Why lower MED wins, and why the same-neighbor constraint matters
+
+- In FRR, `set metric` sets the **MED** (Multi-Exit Discriminator). MED is an *optional, non-transitive* attribute: it tells a neighbor AS which of several entry points to prefer, and by convention **lower is better** (think of it as a cost, not a preference).
+- It is set **outbound on the advertiser**, per neighbor. r1 owns the prefix, so r1 is the only router that can stamp a different MED on each link's copy of the route.
+- By default, BGP only compares MED **between paths whose immediate neighbor AS is the same**. Here both copies of `1.1.1.1/32` reach r2 from the same neighbor AS (65001), so the comparison applies and link1 (metric 50) beats link2 (metric 200). If the two paths came from *different* neighbor ASes, MED would be skipped unless you enabled `bgp always-compare-med`.
+- MED is only reached after the higher rungs of the best-path ladder tie: weight, LOCAL_PREF, AS_PATH length, and origin are all equal across these two paths, so selection falls through to MED, and MED decides.
+
+## Verifying
+
+```
+r2# show ip bgp 1.1.1.1/32 json
+```
+
+The checks assert that r2 has both candidate paths and that the best path (`paths[0]`) uses the lower-MED link1 next hop:
+
+```
+$.paths            exists
+$.paths[0].nexthops[0].ip == "10.0.12.1"
+```
+
+(Equivalently, `$.paths[0].metric == 50`.) These JSON paths are schema-derived and should be confirmed against a live FRR deploy.

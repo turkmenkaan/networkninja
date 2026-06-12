@@ -1,0 +1,161 @@
+# Tag Routes with Communities and no-export
+
+A BGP community is a sticky note you attach to a prefix. It carries no meaning of its own; it is a tag that other routers, including ones in other companies, can be told to look for and react to. In this lab you color two of your routes on the way out the door, then watch a transit AS act on one color and watch the well-known `no-export` tag quietly stop a route from spreading.
+
+You are `r1` (AS 65001). You already originate two prefixes and already peer with `r2`. Right now both prefixes leave you plain and uncolored. Your job is to tag them and make sure the tags actually travel.
+
+## The scenario
+
+- `172.16.10.0/24` is your "premium customer" route. You will paint it with community **`65001:100`**. Your transit provider `r2` (AS 65002) has agreed that this color means "prefer this path", and it is already wired to bump its local-preference when it sees that tag.
+- `172.16.20.0/24` is internal-ish: you want `r2` to learn it, but you do **not** want it leaking past `r2` into the wider internet. You will tag it with the well-known community **`no-export`**, which means exactly that: a router that receives it must not re-advertise it outside its own AS.
+- `r3` (AS 65003) sits one hop beyond `r2` as a far observer. It is the proof point: the premium route should reach it, the `no-export` route should not.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "originates + tags", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "transit, acts on tag", col: 1, row: 0 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "far observer", col: 2, row: 0 },
+  ]}
+  links={[
+    { from: "r1", to: "r2" },
+    { from: "r2", to: "r3" },
+  ]}
+  legend="172.16.10.0/24 tagged 65001:100 (prefer) | 172.16.20.0/24 tagged no-export (keep in AS 65002)"
+  caption={<>A three-AS chain. r1 originates and colors both prefixes; r2 is pre-built to prefer the 65001:100 route and to forward communities to r3; r3 only receives. The premium route should reach r3, the no-export route should stop at r2.</>}
+/>
+
+The eBGP sessions and the addressing are already configured everywhere. On `r1` the two `network` statements are already in place too. Only the tagging on `r1` is yours to build.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and all three router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots all three routers. Drop into `r1`'s FRR shell, where you will do all of your work:
+
+```bash
+docker exec -it clab-bgp-route-maps-and-communities-r1 vtysh
+```
+
+Open `r2` and `r3` in two more terminals so you can watch them react:
+
+```bash
+docker exec -it clab-bgp-route-maps-and-communities-r2 vtysh
+docker exec -it clab-bgp-route-maps-and-communities-r3 vtysh
+```
+
+## Step 1: Look before you tag
+
+Both prefixes are already flowing, untagged. Confirm that on `r2`:
+
+```
+r2# show ip bgp 172.16.10.0/24
+r2# show ip bgp 172.16.20.0/24
+```
+
+Both should be present. Neither shows a community yet, and `172.16.10.0/24` has the default local-preference (100), because `r1` has not colored anything. Now look at `r3`:
+
+```
+r3# show ip bgp 172.16.20.0/24
+```
+
+Right now `172.16.20.0/24` **is** in `r3`'s table. After you tag it `no-export`, it will disappear from here. That contrast is the whole point.
+
+## Step 2: Tag the prefixes on r1
+
+On `r1`, select each prefix with a prefix-list, match it in a route-map, and set its community. The trailing `permit 30` clause is essential: a route-map applied outbound drops anything that does not match a permit clause, so without it every other route (and untagged traffic) would silently vanish.
+
+```
+r1# configure terminal
+r1(config)# ip prefix-list P10 seq 5 permit 172.16.10.0/24
+r1(config)# ip prefix-list P20 seq 5 permit 172.16.20.0/24
+r1(config)# route-map TAG permit 10
+r1(config-route-map)# match ip address prefix-list P10
+r1(config-route-map)# set community 65001:100
+r1(config-route-map)# exit
+r1(config)# route-map TAG permit 20
+r1(config-route-map)# match ip address prefix-list P20
+r1(config-route-map)# set community no-export
+r1(config-route-map)# exit
+r1(config)# route-map TAG permit 30
+r1(config-route-map)# exit
+```
+
+Now apply it outbound to `r2` and, critically, turn on `send-community` so the tags are actually placed on the wire:
+
+```
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 10.0.12.2 route-map TAG out
+r1(config-router)# neighbor 10.0.12.2 send-community
+r1(config-router)# end
+r1# write memory
+```
+
+Re-apply the outbound policy to the existing session so the changes take effect immediately:
+
+```
+r1# clear ip bgp 10.0.12.2 out
+```
+
+> Without `send-community`, FRR strips communities before sending to an eBGP peer by default. Your tags would be set locally and never leave `r1`. This single line is the most common thing people forget.
+
+## Step 3: Verify downstream
+
+On `r2`, look at the premium route. It should now carry the community and, because `r2`'s pre-built inbound policy reacts to that color, show **local-preference 300**:
+
+```
+r2# show ip bgp 172.16.10.0/24
+```
+
+You should see `Community: 65001:100` and `localpref 300`. That LocPrf is downstream proof: `r2` saw your color and acted on it.
+
+Check the `no-export` prefix on `r2`. It should still be present here, carrying the `no-export` community:
+
+```
+r2# show ip bgp 172.16.20.0/24
+```
+
+Now the payoff. On `r3`, the premium route arrives but the `no-export` route is gone:
+
+```
+r3# show ip bgp 172.16.10.0/24
+r3# show ip bgp 172.16.20.0/24
+```
+
+`172.16.10.0/24` is present. `172.16.20.0/24` returns `% Network not in table`, because `r2` honored `no-export` and refused to re-advertise it outside AS 65002.
+
+## Objectives
+
+- ✅ **Community applied:** on `r2`, `172.16.10.0/24` carries community `65001:100`.
+- ✅ **Tag drove a decision:** on `r2`, `172.16.10.0/24` has local-preference `300`.
+- ✅ **no-export stopped propagation:** on `r3`, `172.16.10.0/24` is present but `172.16.20.0/24` is absent.
+
+## Troubleshooting
+
+- **Tags never reach `r2`?** You almost certainly missed `neighbor 10.0.12.2 send-community`. FRR does not send communities to eBGP peers unless you ask it to. After fixing it, run `clear ip bgp 10.0.12.2 out`.
+- **LocPrf still 100 on `r2`?** The community did not arrive, so `r2`'s community-list never matched. Confirm `send-community` and that the `set community 65001:100` is on the right prefix-list clause.
+- **Other routes disappeared from `r2`?** Your `TAG` route-map is missing the trailing `route-map TAG permit 30`. An outbound route-map denies anything not explicitly permitted.
+- **`no-export` route still showing up on `r3`?** Confirm the tag is `no-export` (the well-known community), not a custom value, and that it is set on `172.16.20.0/24`. `no-export` is honored at the AS boundary: `r2` keeps the route but will not pass it to AS 65003.
+- **Need to see why `r2` prefers a path?** `show ip bgp 172.16.10.0/24` lists the community and local-preference per path. To inspect what `r2` matches, recall it uses `bgp community-list standard CUST-100 permit 65001:100`.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- A **community** is a tag attached to a prefix with `set community` inside a route-map; downstream routers can match it (via a `community-list`) and make policy decisions like raising **local-preference**.
+- Communities are not sent to eBGP peers unless you add **`send-community`**. This is the single most common mistake.
+- An outbound route-map drops anything not matched by a `permit` clause, so it needs a **trailing permit** to pass untagged routes through.
+- **`no-export`** is a well-known community meaning "do not advertise outside this AS". The receiving AS keeps the route but will not propagate it past its own boundary, which is how you scope a route's reach without touching anyone else's filters.
+
+**Next:** put filtering, prefix-lists, and communities together from a blank slate in the `bgp-policy-capstone` challenge.

@@ -1,0 +1,78 @@
+# The BGP Best-Path Algorithm, Top to Bottom
+
+You have met the path attributes one at a time: WEIGHT, LOCAL_PREF, AS_PATH, ORIGIN, MED. Now you get to see how they fit together. For any given prefix a BGP router may know several candidate paths, but it installs exactly **one** of them as best. The way it chooses is not a vote and not a score. It is an ordered list of tie-breakers, and the router walks that list from top to bottom, stopping the instant a step produces a single winner.
+
+That "stop at the first decider" behavior is the whole trick. If WEIGHT already separates two paths, nothing below WEIGHT ever gets looked at. AS_PATH length, MED, IGP cost: all irrelevant the moment something higher up has decided. So the order is not trivia. It is the priority of your levers.
+
+## The precondition: a usable NEXT_HOP
+
+Before a path is even allowed into the contest, its **NEXT_HOP must be reachable**. If your routing table has no route to the NEXT_HOP address, BGP marks that path as not a candidate and skips it entirely. A perfectly attractive path with an unreachable next hop loses by default, because it never enters the comparison. Keep this in mind: a "missing" best path is very often a NEXT_HOP resolution problem, not an attribute problem.
+
+## The ordered list
+
+Here is the sequence FRR and Cisco use. For each step, the rule and which direction wins.
+
+1. **Highest WEIGHT.** Cisco/FRR local-only knob, never advertised. Higher wins. Pure local preference on this one router.
+2. **Highest LOCAL_PREF.** Carried to every iBGP router, so it sets an AS-wide preference. Higher wins.
+3. **Locally originated.** A path this router originated itself (via `network`, `redistribute`, or aggregation) beats a path learned from a peer. Local origination wins.
+4. **Shortest AS_PATH.** Fewer ASes usually means a shorter path through the internet. Lower count wins.
+5. **Lowest ORIGIN.** The origin type, ordered `i` (IGP) < `e` (EGP) < `?` (incomplete). Lower wins, so IGP-origin beats incomplete.
+6. **Lowest MED.** A neighbor's hint about which of its entry points to use. Lower wins, but only when the paths come from the **same neighbor AS**.
+7. **eBGP over iBGP.** An externally learned path beats an internally learned one, because eBGP gets you out of your own AS sooner. eBGP wins.
+8. **Lowest IGP metric to the NEXT_HOP.** Among remaining ties, prefer the path whose NEXT_HOP is closest by your IGP. This is "hot-potato" routing: hand the traffic off as cheaply as possible. Lower metric wins.
+9. **Final tie-breakers.** If still tied: prefer the **oldest eBGP route** (it is the most stable), then the path from the **lowest router-id**, then the **lowest neighbor IP**. These are deterministic so two routers never disagree.
+
+## Which lever maps to what
+
+Read the list again as a toolbox and it organizes itself:
+
+- **WEIGHT** is your local override, scoped to one router.
+- **LOCAL_PREF** is your AS-wide outbound preference, the standard way to say "leave through this provider."
+- **AS_PATH** is the natural metric, and AS_PATH prepending is how you make a path look worse to the outside world.
+- **ORIGIN** and **MED** are finer hints, MED being the way one AS suggests an entry point to its neighbor.
+- The bottom steps (eBGP-over-iBGP, IGP metric, tie-breakers) are what the router falls back on when you have not expressed any preference at all.
+
+The further **up** a step sits, the **stronger** your control. That is exactly why the next lesson reaches for LOCAL_PREF.
+
+## A worked example
+
+Your router learns prefix `203.0.113.0/24` from two places, and assume both next hops resolve fine.
+
+- **Path A**: AS_PATH `65010 65020 65030`, LOCAL_PREF 100, learned via eBGP.
+- **Path B**: AS_PATH `65040 65030`, LOCAL_PREF 100, learned via eBGP.
+
+Walk the ladder. Step 1, WEIGHT: both default to 0, tie. Step 2, LOCAL_PREF: both 100, tie. Step 3, locally originated: neither, tie. Step 4, shortest AS_PATH: Path A has three ASes, Path B has two. **Path B wins right here.** The router stops. It never inspects ORIGIN, MED, or anything below, because step 4 already produced a single winner.
+
+Now change one thing: suppose you had set **LOCAL_PREF 200** on Path A. Then step 2 decides, Path A wins, and the longer AS_PATH never even matters. Same two paths, a different and higher-priority lever, opposite outcome. That is the algorithm in one picture.
+
+## The decision ladder
+
+<StateMachine
+  eyebrow="BGP best-path decision ladder"
+  states={[
+    { id: "weight", label: "1. Highest WEIGHT", row: 0, lane: 0 },
+    { id: "localpref", label: "2. Highest LOCAL_PREF", row: 1, lane: 0 },
+    { id: "local", label: "3. Locally originated", row: 2, lane: 0 },
+    { id: "aspath", label: "4. Shortest AS_PATH", row: 3, lane: 0 },
+    { id: "origin", label: "5. Lowest ORIGIN", row: 4, lane: 0 },
+    { id: "med", label: "6. Lowest MED", row: 5, lane: 0 },
+    { id: "ebgp", label: "7. eBGP over iBGP", row: 6, lane: 0 },
+    { id: "igp", label: "8. Lowest IGP metric to NEXT_HOP", row: 7, lane: 0 },
+    { id: "tiebreak", label: "9. Oldest, lowest router-id, lowest IP", row: 8, lane: 0, highlight: true, note: "deterministic last resort" },
+  ]}
+  transitions={[
+    { from: "weight", to: "localpref", label: "tie" },
+    { from: "localpref", to: "local", label: "tie" },
+    { from: "local", to: "aspath", label: "tie" },
+    { from: "aspath", to: "origin", label: "tie" },
+    { from: "origin", to: "med", label: "tie" },
+    { from: "med", to: "ebgp", label: "tie" },
+    { from: "ebgp", to: "igp", label: "tie" },
+    { from: "igp", to: "tiebreak", label: "tie" },
+  ]}
+  caption={<>The router checks each step in order and <strong>stops at the first one that separates the paths</strong>. Every step below a decider is never evaluated. Higher steps are stronger levers.</>}
+/>
+
+## What's next
+
+You now know the full ladder and, more importantly, that the **top** of it is where your strongest controls live. WEIGHT only affects one router, so the first attribute you reach for to steer a whole AS is the second rung: LOCAL_PREF. Next, in **`bgp-influence-local-pref`**, you will set LOCAL_PREF on inbound routes and watch the entire AS agree to leave through the exit you chose.

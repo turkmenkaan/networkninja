@@ -1,0 +1,12 @@
+id: bgp-best-path-algorithm
+type: lesson
+title: "The BGP Best-Path Algorithm, Top to Bottom"
+summary: "Walk BGP's ordered tie-breakers from WEIGHT down to lowest neighbor IP to see exactly how a router picks one best path per prefix."
+path: bgp-fundamentals
+module: path-attributes
+difficulty: intermediate
+estimated_minutes: 15
+prerequisites: [bgp-weight-and-origin]
+tags: [bgp, best-path, path-selection, path-attributes]
+status: published
+version: 1

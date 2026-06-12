@@ -1,0 +1,51 @@
+# Objectives + verification for bgp-filter-with-prefix-lists.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY: the JSON paths below (including the total-prefix-count field name in
+# `show ip bgp json`) are schema-derived, NOT yet confirmed on a live FRR 8.4.1
+# deploy. Confirm them during the verification pass before relying on them.
+
+objectives:
+  - id: legit-prefix-accepted
+    description: "r2 accepts the customer's legitimate prefix 203.0.113.0/24 from r1."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-filter-with-prefix-lists-r2 vtysh -c 'show ip bgp 203.0.113.0/24'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 203.0.113.0/24 json'"
+      parse: json
+      # TO-CONFIRM: for a single-prefix lookup, `show ip bgp <prefix> json`
+      # returns a `paths` array when the prefix is present in the table.
+      assert:
+        path: "$.paths"
+        exists: true
+    hint: >
+      203.0.113.0/24 is one of the customer's real allocations, so it must be
+      permitted by your inbound prefix-list. If it is missing, your list is
+      either not applied inbound on neighbor 10.0.12.1, or you forgot to
+      soft-clear the session (`clear ip bgp 10.0.12.1 in`) after applying it.
+
+  - id: bogon-prefix-rejected
+    description: "r2 rejects the 10.0.0.0/8 bogon, leaving exactly the 2 legitimate prefixes in its table."
+    # After filtering, `show ip bgp 10.0.0.0/8` reports the network is not in
+    # the table. The JSON check below confirms the table holds exactly the two
+    # legitimate prefixes (so the bogon is absent).
+    display_command: "docker exec -it clab-bgp-filter-with-prefix-lists-r2 vtysh -c 'show ip bgp 10.0.0.0/8'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp json'"
+      parse: json
+      # TO-CONFIRM: field name for the total prefix count in `show ip bgp json`.
+      # Schema-derived as `totalPrefixes`; fallback `totalRoutes`. The intent is
+      # that 10.0.0.0/8 is absent and only the 2 customer prefixes remain (== 2).
+      assert:
+        path: "$.totalPrefixes"
+        equals: 2
+    hint: >
+      A prefix-list ends with an implicit deny: any prefix that matches none of
+      your permit entries is dropped. 10.0.0.0/8 is not permitted, so it never
+      enters r2's table. If you still see 3 prefixes, your list permitted too
+      much (check the prefixes and any le/ge modifiers) or did not apply inbound.

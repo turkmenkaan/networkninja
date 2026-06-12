@@ -1,0 +1,24 @@
+# Lab name → containers are named clab-bgp-med-and-tiebreakers-<node>.
+name: bgp-med-and-tiebreakers
+
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r1/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r2:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r2/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+
+  links:
+    # Two PARALLEL eBGP links between AS 65001 (r1) and AS 65002 (r2).
+    # Link1: subnet 10.0.12.0/24 (r1 .1, r2 .2) on eth1
+    - endpoints: ["r1:eth1", "r2:eth1"]
+    # Link2: subnet 10.0.34.0/24 (r1 .1, r2 .2) on eth2
+    - endpoints: ["r1:eth2", "r2:eth2"]

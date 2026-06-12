@@ -1,0 +1,23 @@
+id: bgp-filter-with-prefix-lists
+type: lab
+title: "Filter Inbound Routes with a Prefix List"
+summary: "Accept only a customer's real allocations by applying an inbound prefix-list on an eBGP session."
+path: bgp-fundamentals
+module: route-filtering
+difficulty: intermediate
+estimated_minutes: 25
+prerequisites:
+  - lab-environment-setup
+  - bgp-communities
+tags: [bgp, prefix-list, filtering, frr]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 2
+  est_ram_mb: 512
+  images: [frrouting/frr]
+  est_boot_seconds: 20
+
+status: published
+version: 1

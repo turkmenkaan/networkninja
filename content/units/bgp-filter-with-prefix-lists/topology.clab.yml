@@ -1,0 +1,21 @@
+# Lab name -> containers are named clab-bgp-filter-with-prefix-lists-<node>.
+name: bgp-filter-with-prefix-lists
+
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r1/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r2:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r2/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+
+  links:
+    # AS 65001 (r1, the customer) <----> AS 65002 (r2, your filter), subnet 10.0.12.0/24
+    - endpoints: ["r1:eth1", "r2:eth1"]

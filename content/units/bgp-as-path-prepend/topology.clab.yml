@@ -1,0 +1,39 @@
+# Lab name → containers are named clab-bgp-as-path-prepend-<node>.
+name: bgp-as-path-prepend
+
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r1/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r2:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r2/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r3:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r3/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r4:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r4/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+
+  links:
+    # r1 (AS 65001) <----> r2 (AS 65002), subnet 10.0.12.0/24 (r1 .1, r2 .2)
+    - endpoints: ["r1:eth1", "r2:eth1"]
+    # r1 (AS 65001) <----> r3 (AS 65003), subnet 10.0.13.0/24 (r1 .1, r3 .3)
+    - endpoints: ["r1:eth2", "r3:eth1"]
+    # r2 (AS 65002) <----> r4 (AS 65004), subnet 10.0.24.0/24 (r2 .2, r4 .4)
+    - endpoints: ["r2:eth2", "r4:eth1"]
+    # r3 (AS 65003) <----> r4 (AS 65004), subnet 10.0.34.0/24 (r3 .3, r4 .4)
+    - endpoints: ["r3:eth2", "r4:eth2"]

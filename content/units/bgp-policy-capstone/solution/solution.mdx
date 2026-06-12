@@ -1,0 +1,47 @@
+# Solution: Build an ISP Edge Policy
+
+All the work is on `r2`. The customer (`r1`) and upstream (`r3`) were already running. Here is the complete blank-slate build.
+
+## The full r2 config
+
+```
+router bgp 65002
+ no bgp ebgp-requires-policy
+ neighbor 10.0.12.1 remote-as 65001
+ neighbor 10.0.12.1 route-map CUSTOMER-IN in
+ neighbor 10.0.23.3 remote-as 65003
+ neighbor 10.0.23.3 send-community
+!
+ip prefix-list CUST-OK seq 5 permit 203.0.113.0/24
+ip prefix-list CUST-OK seq 10 permit 198.51.100.0/24
+!
+route-map CUSTOMER-IN permit 10
+ match ip address prefix-list CUST-OK
+ set local-preference 200
+ set community 65002:1000
+```
+
+After applying it, soft-clear the customer session inbound so the policy runs against the routes already received:
+
+```
+r2# clear ip bgp 10.0.12.1 in
+```
+
+## Why each piece is there
+
+- **`no bgp ebgp-requires-policy`** keeps RFC 8212 from silently filtering your eBGP routes in these labs. (In production you would instead satisfy 8212 by having explicit policy on every eBGP session, which here you do on the customer side anyway.)
+- **Two neighbors, two roles.** `10.0.12.1` is the customer (AS 65001); `10.0.23.3` is the upstream (AS 65003). `send-community` toward the upstream means the `65002:1000` tag you stamp on customer routes can travel onward if you ever re-advertise them.
+- **`ip prefix-list CUST-OK`** permits only the two real customer allocations. There is no explicit deny for `192.168.0.0/16`: the prefix-list's implicit deny-all handles it, and so does the route-map's implicit deny (see below).
+- **One inbound route-map does three jobs at once.** Clause 10 matches `CUST-OK`, and in the same clause `set local-preference 200` makes customer routes win over the upstream, while `set community 65002:1000` labels them. Filtering, steering, and tagging in a single pass.
+- **No trailing `permit` clause, on purpose.** Unlike the tagging lab, here you *want* the route-map's implicit deny to drop everything the prefix-list did not match. That is what removes `192.168.0.0/16`. Adding a `permit 20` catch-all would let the bogon straight through and break the filter, the single most common mistake on this capstone.
+
+## What you should observe
+
+On `r2`:
+
+- `show ip bgp summary` shows both `10.0.12.1` and `10.0.23.3` **Established**.
+- `show ip bgp 192.168.0.0/16` returns `% Network not in table`: the leak is filtered.
+- `show ip bgp 203.0.113.0/24` (and `198.51.100.0/24`) is present, shows **LocPrf 200**, and lists community **`65002:1000`**.
+- `8.8.8.0/24` from the upstream is present too, at the default LocPrf 100, so it sits below your customer routes in preference.
+
+That is a working provider edge: it trusts nothing it receives, accepts only the prefixes it agreed to carry, marks them, and prefers them deliberately. You have finished the BGP Fundamentals path.

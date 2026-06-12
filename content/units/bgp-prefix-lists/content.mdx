@@ -1,0 +1,91 @@
+# Prefix Lists: Filtering by Network
+
+A BGP session will carry whatever you let it carry. Left unpoliced, you might accept a neighbor announcing `0.0.0.0/0` (a default route you never wanted), or RFC 1918 space, or **bogons** (addresses that should never appear on the public internet at all). You might even leak your provider's full table back out and accidentally become transit for the planet. None of that is hypothetical; it is how real outages start.
+
+So the rule at every network boundary is simple: **only accept and announce the prefixes you actually intend to.** Inbound, you want your customer's allocations and nothing weird. Outbound, you want your own address space and your customers', not the whole internet. RFC 8212 already protects you a little here: a modern router refuses to exchange routes over an eBGP session that has *no* policy at all, so an unconfigured peer simply carries nothing. But that is a safety catch, not a policy. **The prefix list is how you write the policy.**
+
+## The syntax
+
+A prefix list is an ordered set of permit/deny rules matched against a route's network and length:
+
+```
+ip prefix-list NAME [seq N] permit|deny PREFIX [le L] [ge G]
+```
+
+- **`PREFIX`** is a network and length, e.g. `10.0.0.0/8`.
+- **`le L`** ("less than or equal") and **`ge G`** ("greater than or equal") turn an exact prefix into a **length range**. They constrain the *mask length* of matching routes, not the network bits.
+- Rules are evaluated **in `seq` order, and the first match wins.** When a route matches a rule, evaluation stops and that rule's permit or deny decides the route's fate.
+- There is an **implicit `deny` at the end.** Anything not explicitly permitted is dropped. If your list only permits, everything else is silently denied.
+
+### Exact match vs range
+
+With no `ge`/`le`, a rule matches **only that exact prefix and length**. `permit 192.0.2.0/24` permits `192.0.2.0/24` and nothing else: not `192.0.2.0/25`, not the covering `192.0.0.0/16`.
+
+Add `le`/`ge` and you open a window of lengths *inside* the named prefix:
+
+- `10.0.0.0/8 le 24` matches any route whose address falls inside `10.0.0.0/8` **and** whose length is from 8 up to 24. So `10.0.0.0/8`, `10.1.0.0/16`, and `10.5.5.0/24` all match; `10.5.5.0/25` does not (too long).
+- `ge G` sets the **floor** length, `le L` sets the **ceiling**. The base prefix length is always the implicit floor unless you raise it with `ge`. So `192.0.0.0/16 ge 24 le 24` matches exactly the /24s carved out of `192.0.0.0/16`.
+
+A useful mental model: the network part picks the **address block**, and `ge`/`le` pick the **range of mask lengths** you will accept within it.
+
+## Worked examples
+
+| Rule | What it matches |
+|---|---|
+| `permit 192.0.2.0/24` | Exactly `192.0.2.0/24`, no more, no less |
+| `permit 0.0.0.0/0 le 24` | Every prefix on the internet with length /24 **or shorter** (a common "accept normal-sized routes" filter) |
+| `permit 0.0.0.0/0 ge 25` | Every prefix /25 or **longer** (the long, deaggregated routes you often want to drop) |
+| `deny 10.0.0.0/8 le 32` | Anything inside `10.0.0.0/8` at any length: drops all RFC 1918 ten-space |
+| `permit 198.51.100.0/24 ge 26` | Only the /26 to /32 subnets carved from this /24, not the /24 itself |
+| `deny 0.0.0.0/0` | Just the default route, exactly |
+
+Put these together and order matters. A classic inbound filter denies the bogons and RFC 1918 first, then permits the normal range, and lets the implicit deny mop up the rest:
+
+```
+ip prefix-list CUSTOMER-IN seq 5 deny 0.0.0.0/0
+ip prefix-list CUSTOMER-IN seq 10 deny 10.0.0.0/8 le 32
+ip prefix-list CUSTOMER-IN seq 15 deny 172.16.0.0/12 le 32
+ip prefix-list CUSTOMER-IN seq 20 deny 192.168.0.0/16 le 32
+ip prefix-list CUSTOMER-IN seq 25 permit 0.0.0.0/0 le 24
+```
+
+Because first match wins, the `deny` rules catch the junk before the broad `permit` at seq 25 ever sees it.
+
+## Applying a prefix list to BGP
+
+A prefix list is inert until you attach it to a neighbor in a **direction**. There are two ways to do that.
+
+**1. Directly, per neighbor.** Bind the list to traffic coming `in` from, or going `out` to, a peer:
+
+```
+router bgp 65001
+ neighbor 10.0.12.2 remote-as 65002
+ neighbor 10.0.12.2 prefix-list CUSTOMER-IN in
+ neighbor 10.0.12.2 prefix-list MY-BLOCKS out
+```
+
+- **`in`** filters routes the neighbor sends *you* before they enter your table. This is where you reject bogons, defaults, and oversized prefixes.
+- **`out`** filters routes *you* send the neighbor. This is where you make sure you only announce your own space, not your full table.
+
+**2. Inside a route-map.** When you need to filter *and* also set attributes (local-pref, MED, communities), you reference the prefix list as a match condition instead:
+
+```
+route-map CUSTOMER-POLICY permit 10
+ match ip address prefix-list CUSTOMER-IN
+```
+
+then apply the route-map to the neighbor with `neighbor ... route-map CUSTOMER-POLICY in`. The prefix list does the *which prefixes* part; the route-map does the *and then what* part. You will build those in **`bgp-route-maps`** next.
+
+## Policy changes need a refresh
+
+Here is the gotcha that bites everyone. Editing a prefix list does **not** retroactively re-filter routes already in the table. BGP applies inbound policy as routes *arrive*, so a list you change today only affects prefixes received after the change. To re-evaluate what the peer already sent you, trigger a **soft reset**:
+
+```
+clear ip bgp 10.0.12.2 in
+```
+
+That asks the peer (or replays from a stored copy) so your updated inbound policy runs against the full set again. Use `out` to re-push your outbound policy. The soft reset re-applies policy **without tearing down the TCP session**, so the peering stays up the whole time. Forget this step and you will swear your new filter "isn't working" when really it just hasn't been run yet.
+
+## What's next
+
+You now know how to express *which* prefixes cross a boundary: the `ip prefix-list` syntax, exact-match versus `ge`/`le` ranges, first-match-wins ordering with an implicit deny, and the two ways to attach a list to a neighbor. Next, in **`bgp-route-maps`**, you will wrap these matches in route-maps so you can not only filter prefixes but also rewrite their attributes and steer traffic the way your policy demands.

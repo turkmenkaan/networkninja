@@ -1,0 +1,81 @@
+# LOCAL_PREF and MED: Steering Traffic
+
+You've met the attributes BGP uses to *describe* a path. Now meet the two it uses to **steer** traffic, one for each direction of flow. **LOCAL_PREF** decides how packets leave your AS. **MED** politely asks a neighbor AS how packets should come back in. They sound similar, they're easy to confuse, and they point in opposite directions. Get the direction straight and the rest falls into place.
+
+The mental model: **LOCAL_PREF is your outbound steering wheel, MED is a suggestion you mail to the neighbor about your inbound door.** One you control absolutely. The other is a hint the neighbor is free to ignore.
+
+## LOCAL_PREF: your authoritative outbound knob
+
+**LOCAL_PREF** is a **well-known discretionary** attribute. "Well-known" means every BGP implementation understands it. "Discretionary" means a router may or may not set it, but once it's on a route, everyone respects it.
+
+The defining trait of LOCAL_PREF is its **scope: it is AS-wide.** When an edge router sets LOCAL_PREF on a route, that value is carried over iBGP to **every other router in your AS**. All of your internal routers see the same LOCAL_PREF for the same path, so they all agree on which exit to prefer. This is exactly why it is the **authoritative outbound knob**: it gives your whole AS a single, shared opinion about where traffic should leave.
+
+A few rules to lock in:
+
+- **Higher wins.** Of all the paths to a prefix, the one with the highest LOCAL_PREF is preferred.
+- **Default is 100.** A path with no explicit LOCAL_PREF is treated as 100, so you raise a value to prefer a path or lower it to avoid one.
+- **It never leaves the AS.** LOCAL_PREF is **non-transitive across AS boundaries**: it is stripped before a route is advertised over eBGP. Your neighbor never sees the value you set. It is a purely internal signal.
+- **It controls OUTBOUND traffic.** Because it decides which exit *your* routers choose, it shapes the traffic leaving your network.
+
+If you have two upstream providers and you want all outbound traffic to favor one of them, you raise LOCAL_PREF on the routes learned from that provider. Done. Every internal router now steers that way.
+
+## MED: a hint to your neighbor
+
+**MED** (Multi-Exit Discriminator) is an **optional non-transitive** attribute, and it solves the opposite problem. You can't directly set policy inside someone else's AS, but you *can* attach a number to the routes you advertise that says, in effect, "if you have two ways to reach me, please use this entry point."
+
+The rules invert almost everything about LOCAL_PREF:
+
+- **Lower wins.** MED is meant to read like a metric or cost, so the **lower** value is the more preferred entry point.
+- **It influences INBOUND traffic.** You advertise MED outward to a neighbor to nudge how *their* traffic enters *your* AS.
+- **It compares only paths from the SAME neighbor AS.** By default BGP only weighs MED values against each other when the competing paths come from the **same** adjacent AS. A MED from AS 200 is not compared to a MED from AS 300, because there's no guarantee the two neighbors set their MEDs on the same scale.
+- **It is ignorable.** MED is a *hint*, not a command. Your neighbor can configure their routers to disregard it entirely, and many large networks do.
+- **It is non-transitive: it dies at the neighbor.** Your direct neighbor sees your MED and may act on it, but they do **not** pass it deeper into the internet. It travels exactly one AS hop and stops.
+
+MED is the weakest form of traffic engineering because it depends on someone else's cooperation. Use it when you have **two links to the same provider** and want to influence which link they prefer for return traffic.
+
+## The contrast, side by side
+
+| | LOCAL_PREF | MED |
+|---|---|---|
+| Direction it steers | Outbound (traffic leaving your AS) | Inbound (traffic entering your AS) |
+| Scope | AS-wide (shared across all your iBGP routers) | Advertised to a neighbor AS |
+| Which value wins | Higher | Lower |
+| Transitivity | Non-transitive, stripped at the eBGP edge, never leaves your AS | Non-transitive, dies at the receiving neighbor (one AS hop) |
+| Authority | Authoritative inside your AS | A hint the neighbor may ignore |
+| Compared against | All paths to the prefix | Only paths from the same neighbor AS |
+
+## Where they sit in best-path selection
+
+These two don't fight for the same slot. The BGP best-path algorithm checks attributes in a fixed order, and **LOCAL_PREF is evaluated near the very top while MED is evaluated much lower down**. That ordering is deliberate: LOCAL_PREF is your AS's strong, internal will, so it gets a decisive say early. MED is a tiebreaker among otherwise-equal paths that all arrived from the same neighbor, so it only matters after the bigger decisions are settled. We walk the full ladder, step by step, in **`bgp-best-path-algorithm`**.
+
+The practical takeaway: a high LOCAL_PREF will steer outbound traffic *regardless* of MED, and MED only ever gets a vote when the higher-priority attributes have already tied.
+
+## A multi-homed AS, both directions at once
+
+Picture your network, AS 65010, connected to two upstream providers. LOCAL_PREF shapes the traffic you send out. MED hints at the door you'd like return traffic to use.
+
+<ASTopology
+  eyebrow="One AS, two upstreams, two directions"
+  nodeShape="router"
+  nodes={[
+    { id: "up1", name: "Upstream A", asn: "AS 64500", sublabel: "preferred exit", col: 1, row: 0 },
+    { id: "up2", name: "Upstream B", asn: "AS 64600", sublabel: "backup exit", col: 1, row: 2 },
+    { id: "r1", name: "r1", asn: "AS 65010", sublabel: "edge to A", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65010", sublabel: "edge to B", col: 0, row: 2 },
+    { id: "core", name: "core", asn: "AS 65010", sublabel: "internal", col: 0, row: 1 },
+  ]}
+  links={[
+    { from: "r1", to: "up1", label: "eBGP: LOCAL_PREF 200 inbound -> outbound favors A" },
+    { from: "r2", to: "up2", label: "eBGP: backup, LOCAL_PREF 100" },
+    { from: "r1", to: "core", label: "iBGP: LOCAL_PREF shared AS-wide" },
+    { from: "r2", to: "core", label: "iBGP: LOCAL_PREF shared AS-wide" },
+  ]}
+  legend="LOCAL_PREF steers your outbound, MED hints the neighbor's inbound"
+  caption={<>On routes learned from <strong>Upstream A</strong>, r1 sets <strong>LOCAL_PREF 200</strong>. That value rides iBGP to core and r2, so the whole AS sends <strong>outbound</strong> traffic out via A. Separately, when r1 and r2 advertise your prefixes, they attach a <strong>MED</strong> (lower on A) to hint that A is your preferred <strong>inbound</strong> door, a request the upstreams may honor or ignore.</>}
+/>
+
+You'll set both of these for real in the labs. **`bgp-influence-local-pref`** has you raise LOCAL_PREF and watch every internal router shift its chosen exit together. **`bgp-med-and-tiebreakers`** has you advertise a MED toward a neighbor and observe where it does (and doesn't) get compared, including the same-neighbor-AS restriction.
+
+## What's next
+
+You now own the two directional steering attributes: LOCAL_PREF for the traffic you send (higher wins, AS-wide, authoritative) and MED for the traffic you receive (lower wins, one hop, ignorable). Next, in **`bgp-weight-and-origin`**, we cover two more knobs: **WEIGHT**, a Cisco-specific value that's purely *local to a single router* and outranks even LOCAL_PREF, and **ORIGIN**, the attribute that records how a prefix first entered BGP.

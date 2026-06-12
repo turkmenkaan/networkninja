@@ -1,0 +1,12 @@
+id: bgp-as-path-and-next-hop
+type: lesson
+title: "AS_PATH and NEXT_HOP in Best-Path"
+summary: "How AS_PATH drives loop prevention and path length, and why a reachable NEXT_HOP is a precondition for any route to become best."
+path: bgp-fundamentals
+module: path-attributes
+difficulty: intermediate
+estimated_minutes: 12
+prerequisites: [bgp-attribute-types]
+tags: [bgp, as-path, next-hop, path-attributes]
+status: published
+version: 1

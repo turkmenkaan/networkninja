@@ -1,0 +1,42 @@
+# Solution: Engineer a Dual-Homed Edge
+
+All the work is on `r1`. The two upstreams (`r2`, `r3`) and the internet (`r4`) were already running. The trick is that outbound and inbound are two separate problems with two separate tools, applied in two different directions.
+
+## The full r1 config
+
+```
+router bgp 65001
+ no bgp ebgp-requires-policy
+ neighbor 10.0.12.2 remote-as 65002
+ neighbor 10.0.13.3 remote-as 65003
+ network 1.1.1.1/32
+ neighbor 10.0.12.2 route-map PRIMARY-IN in
+ neighbor 10.0.13.3 route-map BACKUP-OUT out
+!
+route-map PRIMARY-IN permit 10
+ set local-preference 200
+!
+route-map BACKUP-OUT permit 10
+ set as-path prepend 65001 65001
+```
+
+After applying it, soft-clear both sessions so the policies run:
+
+```
+r1# clear ip bgp * in
+r1# clear ip bgp * out
+```
+
+## Why each piece is there
+
+- **Two eBGP sessions** to the two upstreams, plus `network 1.1.1.1/32` so the world can reach you. `no bgp ebgp-requires-policy` keeps RFC 8212 from filtering your routes in this lab.
+- **Outbound is LOCAL_PREF, applied inbound on the primary.** `route-map PRIMARY-IN` raises `LOCAL_PREF` to 200 on everything you learn from upstream A. Because LOCAL_PREF is the first real tiebreaker and higher wins, your best path to `100.64.0.0/24` now leaves through A. It is applied `in` because you are shaping routes you *receive*, and only on the A session so B's copies keep the default 100.
+- **Inbound is AS_PATH prepend, applied outbound to the backup.** You cannot set LOCAL_PREF in someone else's router, so the only lever on return traffic is what you advertise. `route-map BACKUP-OUT` prepends your own AS twice on advertisements *out* toward B, making that path read `65003 65001 65001 65001` to the rest of the world. The path through A stays `65002 65001`, shorter, so remote ASes like `r4` send your return traffic through A.
+
+## What you should observe
+
+- On `r1`, `show ip bgp 100.64.0.0/24` picks the path with AS_PATH `65002 65004` (through A), carrying LocPrf 200.
+- On `r4`, `show ip bgp 1.1.1.1/32` picks AS_PATH `65002 65001` (through A). The path through B reads `65003 65001 65001 65001`, longer because of your prepend, so `r4` rejects it.
+- The session from `r1` to `10.0.12.2` is **Established** (as is the one to B).
+
+The lesson that sticks: a route-map is **directional**. `... in` shapes what you accept and drives *outbound* traffic; `... out` shapes what you announce and drives *inbound* traffic. Mixing those up is the classic dual-homing mistake.

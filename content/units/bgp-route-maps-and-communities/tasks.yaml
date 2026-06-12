@@ -1,0 +1,74 @@
+# Objectives + verification for bgp-route-maps-and-communities.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY / TO-CONFIRM: the JSON paths below are schema-derived from FRR 8.4's
+# `show ip bgp <prefix> json` output and have NOT yet been run through a live
+# FRR deploy. Confirm them on a real deploy before relying on them. In
+# particular, verify the exact shape of:
+#   - the community field: assumed `$.paths[0].community.string` holding a
+#     space-separated list like "65001:100".
+#   - the local-preference field: assumed `$.paths[0].locPrf` (an integer).
+#   - the presence-of-path field: assumed `$.paths` array exists when a prefix
+#     is in the table (and the whole object is empty/absent when it is not).
+
+objectives:
+  - id: community-tag-applied
+    description: "On r2, the prefix 172.16.10.0/24 arrives carrying community 65001:100."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-route-maps-and-communities-r2 vtysh -c 'show ip bgp 172.16.10.0/24'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 172.16.10.0/24 json'"
+      parse: json
+      # TO-CONFIRM: community.string shape is schema-derived; confirm on a real deploy.
+      assert:
+        path: "$.paths[0].community.string"
+        contains: "65001:100"
+    hint: >
+      The community only appears on r2 if r1 both SETS it (set community
+      65001:100 in the TAG route-map, matched via prefix-list P10) AND sends it
+      (neighbor 10.0.12.2 send-community). Missing send-community is the classic
+      cause of a tag that never leaves r1. After editing r1, run
+      `clear ip bgp 10.0.12.2 out` so the policy is re-applied to the session.
+
+  - id: community-drove-localpref
+    description: "On r2, 172.16.10.0/24 has local-preference 300 (r2 acted on r1's color)."
+    display_command: "docker exec -it clab-bgp-route-maps-and-communities-r2 vtysh -c 'show ip bgp 172.16.10.0/24'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 172.16.10.0/24 json'"
+      parse: json
+      # TO-CONFIRM: locPrf field name/shape is schema-derived; confirm on a real deploy.
+      assert:
+        path: "$.paths[0].locPrf"
+        equals: 300
+    hint: >
+      r2's inbound route-map FROM-R1 matches community-list CUST-100 (65001:100)
+      and sets local-preference 300. So LocPrf 300 on r2 is downstream proof
+      that your tag arrived intact. If LocPrf is the default 100, the community
+      did not reach r2 (re-check send-community and the TAG route-map on r1).
+
+  - id: no-export-stopped-at-as65002
+    description: "172.16.20.0/24 (tagged no-export) is ABSENT on r3, while the exportable 172.16.10.0/24 DID reach r3."
+    display_command: "docker exec -it clab-bgp-route-maps-and-communities-r3 vtysh -c 'show ip bgp 172.16.20.0/24'"
+    check:
+      node: r3
+      command: "vtysh -c 'show ip bgp 172.16.10.0/24 json'"
+      parse: json
+      # We assert on the EXPORTABLE prefix reaching r3: that proves the r2->r3
+      # session works, so the absence of 172.16.20.0/24 is genuinely the
+      # no-export community at work, not a broken session.
+      # TO-CONFIRM: paths-exists shape is schema-derived; confirm on a real deploy.
+      assert:
+        path: "$.paths"
+        exists: true
+    hint: >
+      no-export tells a router to keep the prefix INSIDE the AS that received
+      it. r2 (AS 65002) honors it and does not re-advertise 172.16.20.0/24 to
+      r3 (AS 65003), so on r3 `show ip bgp 172.16.20.0/24` should return nothing
+      (% Network not in table). Meanwhile 172.16.10.0/24, which you tagged with
+      an ordinary community, passes straight through to r3, proving the path is
+      open and only the no-export prefix was withheld.

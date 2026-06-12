@@ -1,0 +1,23 @@
+id: bgp-route-maps-and-communities
+type: lab
+title: "Tag Routes with Communities and no-export"
+summary: "Tag advertised prefixes with BGP communities and watch a downstream AS act on the tags, including no-export blocking propagation."
+path: bgp-fundamentals
+module: route-filtering
+difficulty: intermediate
+estimated_minutes: 30
+prerequisites:
+  - lab-environment-setup
+  - bgp-filter-with-prefix-lists
+tags: [bgp, communities, route-map, no-export, frr]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 3
+  est_ram_mb: 768
+  images: [frrouting/frr]
+  est_boot_seconds: 25
+
+status: published
+version: 1

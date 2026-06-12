@@ -1,0 +1,127 @@
+# Filter Inbound Routes with a Prefix List
+
+A customer hands you a BGP session and promises to send you only their own address space. Then they send you a route for `10.0.0.0/8` too. That is private (RFC 1918) space, a classic bogon, and accepting it would be a great way to blackhole half the internet inside your network. Trusting your neighbors is not a routing strategy. Filtering them is.
+
+In this lab `r1` is the customer (AS 65001) and `r2` is **your** router (AS 65002). The session is already up and `r1` is already leaking. Your job: apply an inbound **prefix-list** on `r2` so you accept only the customer's real allocations and drop everything else.
+
+## Scenario
+
+The customer's real, assigned allocations are `203.0.113.0/24` and `198.51.100.0/24`. Those are the only two prefixes you should ever accept from them. But `r1` is advertising a third route, `10.0.0.0/8`, a bogon that must never be allowed in. You will build a prefix-list that names exactly the two you trust, apply it inbound, and let the implicit deny take care of the rest.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "customer: 203.0.113.0/24, 198.51.100.0/24, 10.0.0.0/8", col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "your filter", col: 1, row: 0 },
+  ]}
+  links={[{ from: "r1", to: "r2" }]}
+  legend="eBGP over 10.0.12.0/24 (r1 .1, r2 .2, on eth1)"
+  caption={<>r1 advertises three prefixes, but only two are legitimate. The 10.0.0.0/8 bogon must be filtered out by r2 on the way in.</>}
+/>
+
+The eBGP session and the customer's advertisements are **already configured**. The inbound filter on `r2` is the part you will build.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots both routers. Drop into `r2`'s FRR shell, since `r2` is the router you will be configuring:
+
+```bash
+docker exec -it clab-bgp-filter-with-prefix-lists-r2 vtysh
+```
+
+## Step 1: See the leak
+
+Look at what `r2` is currently learning from the customer:
+
+```
+r2# show ip bgp
+```
+
+You should see **all three** prefixes in the table: `198.51.100.0/24`, `203.0.113.0/24`, and the offender, `10.0.0.0/8`. With no inbound policy, `r2` accepts whatever `r1` sends. Confirm the bogon is really there:
+
+```
+r2# show ip bgp 10.0.0.0/8
+```
+
+It resolves to a valid path through AS 65001. That is exactly the route you do not want.
+
+## Step 2: Build and apply the prefix-list
+
+A prefix-list is an ordered list of permit/deny rules matched against the prefix of each route. You will permit the two legitimate allocations and apply the list inbound on the customer neighbor:
+
+```
+r2# configure terminal
+r2(config)# ip prefix-list CUSTOMER-IN seq 5 permit 203.0.113.0/24
+r2(config)# ip prefix-list CUSTOMER-IN seq 10 permit 198.51.100.0/24
+r2(config)# router bgp 65002
+r2(config-router)# neighbor 10.0.12.1 prefix-list CUSTOMER-IN in
+r2(config-router)# end
+r2# write memory
+```
+
+Two permits, no explicit deny. You do not need one: every prefix-list ends with an **implicit deny-all**, so any prefix that does not match a permit entry (like `10.0.0.0/8`) is silently rejected.
+
+Applying a filter does not retroactively reach into routes you already accepted. Tell BGP to re-evaluate what the neighbor already sent by doing an inbound soft-clear:
+
+```
+r2# clear ip bgp 10.0.12.1 in
+```
+
+This re-runs inbound policy against the stored updates without tearing the session down.
+
+## Step 3: Verify only the legit prefixes remain
+
+Look at the table again:
+
+```
+r2# show ip bgp
+```
+
+Now you should see exactly **two** prefixes: `198.51.100.0/24` and `203.0.113.0/24`. The bogon is gone. Confirm both views:
+
+```
+r2# show ip bgp 203.0.113.0/24
+r2# show ip bgp 10.0.0.0/8
+```
+
+The first returns a valid path. The second now reports that the network is **not in the table**, because your prefix-list dropped it on the way in. You can also inspect the list and its hit counters:
+
+```
+r2# show ip prefix-list CUSTOMER-IN
+```
+
+✅ **Objective:** `r2` accepts `203.0.113.0/24` (a legitimate customer prefix).
+
+✅ **Objective:** `r2` rejects `10.0.0.0/8`, leaving exactly the two legitimate prefixes in its table.
+
+## Troubleshooting
+
+- **Still seeing all three prefixes?** You probably applied the filter but did not soft-clear the session. Run `clear ip bgp 10.0.12.1 in` to re-evaluate the routes already received.
+- **Direction matters: `in` vs `out`.** You are filtering routes the customer sends *to you*, so the filter is applied `in`. An `out` filter would instead control what you advertise to them, which is not the goal here.
+- **Order matters: first match wins.** Prefix-list entries are evaluated in ascending `seq` order and stop at the first match. Leave gaps (5, 10, 15) so you can insert rules later without renumbering.
+- **Do not forget the implicit deny.** There is a hidden `deny any` at the end of every prefix-list. If you only ever write permits, everything you did not name is dropped, which is exactly what filters the bogon here.
+- **Accidentally dropped a legit prefix?** Check the prefix and length in your permit entries match the advertised route exactly. Without `le`/`ge` modifiers, `permit 203.0.113.0/24` matches *only* that exact /24, not subnets or supernets of it.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- A **prefix-list** is an ordered, first-match list of permit/deny rules matched against route prefixes, with an **implicit deny-all** at the end.
+- Applying it **inbound** (`neighbor <ip> prefix-list <name> in`) filters routes a neighbor sends you; `out` would filter what you advertise.
+- Naming only the prefixes you trust and letting the implicit deny drop the rest is a clean, safe way to filter a customer, including bogons like `10.0.0.0/8`.
+- After changing inbound policy you must **soft-clear** the session (`clear ip bgp <ip> in`) for it to apply to already-received routes.
+
+**Next:** shape routing decisions with richer policy in `bgp-route-maps-and-communities`.

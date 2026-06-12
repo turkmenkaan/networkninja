@@ -1,0 +1,12 @@
+id: bgp-route-maps
+type: lesson
+title: "Route Maps: the Policy Swiss Army Knife"
+summary: "Learn how route-map clauses match, set, and permit or deny BGP routes, and why the trailing permit clause is the difference between policy and a silent blackhole."
+path: bgp-fundamentals
+module: route-filtering
+difficulty: intermediate
+estimated_minutes: 14
+prerequisites: [bgp-prefix-lists]
+tags: [bgp, route-map, policy, filtering]
+status: published
+version: 1

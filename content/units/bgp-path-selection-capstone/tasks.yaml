@@ -1,0 +1,61 @@
+# Objectives + verification for bgp-path-selection-capstone (CHALLENGE / blank slate).
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY / TO-CONFIRM: the JSON paths below ($.ipv4Unicast.peers['<ip>'].state,
+# $.paths[0].aspath.string), the exact AS_PATH strings ("65002 65004",
+# "65002 65001"), and the best-path-first ordering of the paths[] array are all
+# SCHEMA-DERIVED from FRR's BGP JSON output (bgp_route.c / bgp_show_summary),
+# NOT yet observed on a live deploy. paths[0] is assumed to be the BEST path;
+# confirm each path, AS_PATH string, and ordering on a real `containerlab deploy`
+# before treating them as verified. These objectives use `equals` to assert the
+# exact engineered best path, so a wrong-direction policy fails loudly.
+
+objectives:
+  - id: outbound-prefers-primary
+    description: "Outbound: r1's best path to 100.64.0.0/24 goes via the PRIMARY (upstream A), AS_PATH 65002 65004."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-path-selection-capstone-r1 vtysh -c 'show ip bgp 100.64.0.0/24'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp 100.64.0.0/24 json'"
+      parse: json
+      assert:
+        path: "$.paths[0].aspath.string"
+        equals: "65002 65004"
+    hint: >
+      LOCAL_PREF picks the way OUT. Higher wins. Raise it on the routes learned
+      from the primary (an inbound route-map on that session) so the path via A
+      beats the same prefix via B.
+
+  - id: inbound-prefers-primary
+    description: "Inbound: r4's best path to 1.1.1.1/32 comes back via the PRIMARY (upstream A), AS_PATH 65002 65001."
+    display_command: "docker exec -it clab-bgp-path-selection-capstone-r4 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r4
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      assert:
+        path: "$.paths[0].aspath.string"
+        equals: "65002 65001"
+    hint: >
+      You cannot set LOCAL_PREF in someone else's AS, so shape what you ADVERTISE.
+      Prepend your own AS on the routes going OUT toward the backup so r4 sees a
+      longer AS_PATH that way (65003 65001 65001 65001) and picks A instead.
+
+  - id: both-sessions-up
+    description: "The eBGP session from r1 to the PRIMARY (10.0.12.2) reaches the Established state."
+    display_command: "docker exec -it clab-bgp-path-selection-capstone-r1 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r1
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['10.0.12.2'].state"
+        equals: "Established"
+    hint: >
+      Both upstreams are eBGP: remote-as 65002 toward A (10.0.12.2) and 65003
+      toward B (10.0.13.3). Both ends must be up before any path selection
+      matters.

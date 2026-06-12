@@ -1,0 +1,68 @@
+# BGP Path Attributes: the Four Categories
+
+A BGP router doesn't just learn that a prefix is reachable; it learns a small dossier *about* that prefix. Every route in a BGP UPDATE message arrives wrapped in **path attributes**: structured metadata that travels with the prefix and describes where it came from, how it got here, and how you should treat it.
+
+This matters because BGP's two headline jobs, **best-path selection** and **policy enforcement**, are nothing more than arithmetic on these attributes. When you "prefer routes from this neighbor" or "make this path less attractive to the outside world," you are not editing some opaque internal score. You are setting an attribute, and the BGP decision process compares those attributes prefix by prefix. Master the attributes and you master BGP.
+
+## One UPDATE, many attributes
+
+A BGP UPDATE carries a set of withdrawn routes, a set of newly advertised prefixes, and the **path attributes** that apply to those prefixes. Each attribute is a type/length/value triple with a flags byte. Two of those flag bits are the ones you actually need to reason about: **well-known vs optional**, and **transitive vs non-transitive**. Those two axes give you exactly four categories.
+
+## The four categories
+
+The flags split every attribute into a 2x2 grid. "Well-known" means every compliant BGP speaker must recognize it. "Transitive" means it survives crossing into the next AS.
+
+<HierarchyTree
+  eyebrow="The 2x2 of path attributes"
+  nodes={[
+    { id: "root", label: "Path attributes", sublabel: "metadata per prefix", tier: 0, w: 260 },
+    { id: "wkm", label: "Well-known mandatory", sublabel: "ORIGIN, AS_PATH, NEXT_HOP", tier: 1, w: 260 },
+    { id: "wkd", label: "Well-known discretionary", sublabel: "LOCAL_PREF, ATOMIC_AGGREGATE", tier: 1, w: 260 },
+    { id: "opt", label: "Optional transitive", sublabel: "COMMUNITIES, AGGREGATOR", tier: 1, w: 260 },
+    { id: "ont", label: "Optional non-transitive", sublabel: "MED, ORIGINATOR_ID, CLUSTER_LIST", tier: 1, w: 280 },
+  ]}
+  edges={[
+    { from: "root", to: "wkm" },
+    { from: "root", to: "wkd" },
+    { from: "root", to: "opt" },
+    { from: "root", to: "ont" },
+  ]}
+  caption={<>Two flag bits, well-known vs optional and transitive vs non-transitive, sort every attribute into one of four buckets.</>}
+/>
+
+**1. Well-known mandatory.** Every BGP speaker must recognize these, and they must appear on every UPDATE that advertises a prefix. They are the skeleton of a route: **ORIGIN** (how the route entered BGP), **AS_PATH** (the list of ASes traversed), and **NEXT_HOP** (where to send the packet next). Drop one of these and the UPDATE is malformed.
+
+**2. Well-known discretionary.** Every speaker recognizes these too, but they don't have to be present. **LOCAL_PREF** is the headliner: it tells routers *inside your AS* which exit to prefer. **ATOMIC_AGGREGATE** is a flag that warns a route was summarized and some path detail was lost.
+
+**3. Optional transitive.** A speaker may or may not implement these, and here the transitive bit does real work. If a router **recognizes** the attribute, it processes it. If it **does not** recognize it, it passes the attribute on unchanged to the next AS and sets the **partial** bit to say "I forwarded this without understanding it." **COMMUNITIES** (the tags you use to signal policy) and **AGGREGATOR** (who summarized a route, and where) live here.
+
+**4. Optional non-transitive.** Optional, and if a router does not recognize one of these, it simply **drops** the attribute rather than forwarding it. Even when recognized, these are not meant to leave their scope. **MED** (a hint about which entry point a neighbor AS should use) and the route-reflector attributes **ORIGINATOR_ID** and **CLUSTER_LIST** (loop prevention inside an AS) belong here.
+
+## Transitive vs non-transitive at the AS boundary
+
+The single most useful instinct to build is: **what happens to this attribute when the route crosses into another AS?** That boundary is where the transitive bit cashes out.
+
+- **LOCAL_PREF never leaves your AS.** It is well-known but its scope is iBGP only; it is stripped before a route is advertised to an eBGP peer. Your internal exit preference is your business, not your neighbor's.
+- **MED is non-transitive.** You hand a MED to a directly connected neighbor AS as a hint, but that neighbor does not pass your MED along to *its* neighbors. It dies one AS hop away by design.
+- **Communities are optional-transitive**, but they are not advertised by default in most implementations. You must explicitly turn them on per neighbor (the classic `send-community` knob). Forget it, and your carefully tagged routes cross the boundary stripped of their tags.
+
+## Major attributes at a glance
+
+Here's a preview of the heavy hitters, their category, and which direction BGP prefers during best-path selection. (We unpack the full decision process in later lessons; treat the "preferred" column as a teaser.)
+
+| Attribute | Category | Best-path preference |
+|-----------|----------|----------------------|
+| LOCAL_PREF | Well-known discretionary | Higher preferred |
+| AS_PATH | Well-known mandatory | Shorter preferred |
+| ORIGIN | Well-known mandatory | Lower preferred (IGP < EGP < Incomplete) |
+| MED | Optional non-transitive | Lower preferred |
+| NEXT_HOP | Well-known mandatory | Must be reachable |
+| COMMUNITIES | Optional transitive | Policy tag, not directly compared |
+
+## A note on WEIGHT
+
+You will meet **WEIGHT** soon, and it is tempting to file it as a fifth attribute. It is not. WEIGHT is a **Cisco and FRR local** value: it lives only inside one router, is never encoded in an UPDATE, and never crosses any link. It is a vendor convenience for local path selection, not a real BGP path attribute. We give it (and ORIGIN) proper treatment in `bgp-weight-and-origin`, so for now just remember: if it isn't on the wire, it isn't a path attribute.
+
+## What's next
+
+You now have the map: path attributes are per-prefix metadata, best-path and policy are attribute math, and the four categories tell you whether a value is mandatory, optional, and crucially whether it survives crossing an AS boundary. Next, in `bgp-as-path-and-next-hop`, we zoom in on the two well-known mandatory attributes you'll touch the most, AS_PATH and NEXT_HOP, and see exactly how each one is rewritten as a route moves between routers and ASes.

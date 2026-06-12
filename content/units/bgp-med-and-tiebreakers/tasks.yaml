@@ -1,0 +1,48 @@
+# Objectives + verification for bgp-med-and-tiebreakers.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY: the JSON paths below (paths[], nexthops[].ip, metric) are
+# schema-derived from `show ip bgp <prefix> json` and have NOT been run through
+# a live FRR yet. Confirm them on deploy before relying on the auto-grader.
+
+objectives:
+  - id: both-paths-present
+    description: "r2 has learned 1.1.1.1/32 over BOTH parallel links (two candidate paths)."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-med-and-tiebreakers-r2 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      assert:
+        # TO-CONFIRM: paths[] array exists when the prefix is known via >=1 path.
+        path: "$.paths"
+        exists: true
+    hint: >
+      r2 should receive 1.1.1.1/32 over both 10.0.12.0/24 and 10.0.34.0/24.
+      Both arrive with AS_PATH 65001. If you only see one path, check that r1
+      still advertises `network 1.1.1.1/32` and that both eBGP sessions are up
+      (`show ip bgp summary`).
+
+  - id: prefers-low-med-link
+    description: "r2's best path to 1.1.1.1/32 is the lower-MED link1 entry (next hop 10.0.12.1)."
+    display_command: "docker exec -it clab-bgp-med-and-tiebreakers-r2 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      assert:
+        # paths[0] is the best path (best-path-first ordering). Its next hop
+        # should be 10.0.12.1 (link1), the entry r1 tagged with the lower MED.
+        # TO-CONFIRM next-hop field: $.paths[0].nexthops[0].ip
+        # Alternative assertion (also TO-CONFIRM): $.paths[0].metric == 50
+        path: "$.paths[0].nexthops[0].ip"
+        equals: "10.0.12.1"
+    hint: >
+      MED (the BGP metric) is a tie-breaker where LOWER wins. On r1, advertise
+      a low metric out the 10.0.12.2 neighbor and a high metric out 10.0.34.2,
+      using two outbound route-maps. After `clear bgp * out` on r1 (or a soft
+      refresh), r2's best path should flip to the 10.0.12.1 next hop.

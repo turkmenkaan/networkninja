@@ -1,0 +1,13 @@
+id: bgp-attribute-types
+type: lesson
+title: "BGP Path Attributes: the Four Categories"
+summary: "How BGP attaches metadata to every prefix in an UPDATE, and the four attribute categories that decide whether a value crosses an AS boundary or stays home."
+path: bgp-fundamentals
+module: path-attributes
+difficulty: intermediate
+estimated_minutes: 13
+prerequisites:
+  - bgp-path-vector
+tags: [bgp, attributes, path-attributes]
+status: published
+version: 1

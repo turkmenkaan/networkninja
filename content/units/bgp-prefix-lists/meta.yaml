@@ -1,0 +1,12 @@
+id: bgp-prefix-lists
+type: lesson
+title: "Prefix Lists: Filtering by Network"
+summary: "Write the policy that decides which prefixes BGP accepts and announces, using ip prefix-list with le/ge range matching."
+path: bgp-fundamentals
+module: route-filtering
+difficulty: intermediate
+estimated_minutes: 13
+prerequisites: [bgp-path-selection-capstone]
+tags: [bgp, prefix-list, filtering, policy]
+status: published
+version: 1

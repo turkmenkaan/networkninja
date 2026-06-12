@@ -1,0 +1,54 @@
+# Solution: Tag Routes with Communities and no-export
+
+All the work happens on `r1`. The job was to color two prefixes on the way out to `r2` and make sure the colors actually leave the router. `r2` and `r3` were pre-built and untouched.
+
+## What r1 needs
+
+```
+router bgp 65001
+ no bgp ebgp-requires-policy
+ neighbor 10.0.12.2 remote-as 65002
+ neighbor 10.0.12.2 route-map TAG out
+ neighbor 10.0.12.2 send-community
+ network 172.16.10.0/24
+ network 172.16.20.0/24
+!
+ip prefix-list P10 seq 5 permit 172.16.10.0/24
+ip prefix-list P20 seq 5 permit 172.16.20.0/24
+!
+route-map TAG permit 10
+ match ip address prefix-list P10
+ set community 65001:100
+!
+route-map TAG permit 20
+ match ip address prefix-list P20
+ set community no-export
+!
+route-map TAG permit 30
+```
+
+After editing, re-apply the policy to the session so the tags are pushed out:
+
+```
+r1# clear ip bgp 10.0.12.2 out
+```
+
+## Why each piece is there
+
+- **Two prefix-lists select which prefix gets which color.** A `set community` is unconditional inside a clause, so you need the `match ip address prefix-list` to scope each tag to one prefix. `P10` picks `172.16.10.0/24`, `P20` picks `172.16.20.0/24`.
+- **`route-map TAG` has three clauses.** Clause 10 tags the first prefix with `65001:100`, clause 20 tags the second with the well-known `no-export`, and clause 30 is the bare trailing `permit` that lets every other route through untouched. Without that last clause the implicit deny at the end of the route-map would drop anything you did not explicitly match, which on an outbound policy means you would stop advertising those routes entirely.
+- **`send-community` is the line that puts the tags on the wire.** A community you `set` but never send stays local to `r1`. This is the single most common reason a tag "disappears": the route-map ran, but the neighbor was never told to include communities in its UPDATEs.
+
+## What you should observe
+
+On `r2`:
+
+- `172.16.10.0/24` carries community `65001:100`, and because `r2`'s pre-built inbound route-map matches that community, the prefix shows **LocPrf 300** instead of the default 100. That higher local-preference is downstream proof your color arrived intact.
+- `172.16.20.0/24` carries community `no-export`.
+
+On `r3`:
+
+- `172.16.10.0/24` is present. It rode straight through `r2` (AS 65002) to `r3` (AS 65003), proving the `r2 -> r3` session is open and exporting normally.
+- `172.16.20.0/24` is **absent**. `r2` honored the `no-export` tag and kept the prefix inside its own AS, so it was never advertised to `r3`. The contrast with `172.16.10.0/24` is the whole point: same origin, same path, different community, different fate.
+
+This is the community pattern in miniature: tag at the edge, act on the tag deeper in the network, and use a well-known community like `no-export` to control how far a route is allowed to travel.

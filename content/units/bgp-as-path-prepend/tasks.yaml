@@ -1,0 +1,51 @@
+# Objectives + verification for bgp-as-path-prepend.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# Both objectives are asserted on r4, the far observer that actually decides which
+# upstream to use. The prepend on r1 only takes effect once r4 re-runs best-path.
+#
+# HONESTY: the JSON below is schema-derived. In FRR `show ip bgp <prefix> json`,
+# paths[] is best-path-first, so paths[0] is r4's chosen path and
+# paths[0].aspath.string is the space-separated AS_PATH ("65002 65001"). The exact
+# paths[] ordering and the aspath.string spelling MUST be confirmed on a real deploy.
+
+objectives:
+  - id: prefix-reaches-observer
+    description: "r4 (AS 65004) has learned 1.1.1.1/32 from r1 via at least one upstream."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-as-path-prepend-r4 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r4
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      assert:
+        path: "$.paths"
+        exists: true
+    hint: >
+      If r4 sees nothing, the prefix never made it across. Confirm r1 has
+      `network 1.1.1.1/32`, that `no bgp ebgp-requires-policy` is set on every
+      router, and that all four eBGP sessions are Established
+      (`show ip bgp summary`).
+
+  - id: inbound-prefers-upstream-a
+    description: "r4's best path to 1.1.1.1/32 is via r2 (upstream A): AS_PATH '65002 65001'."
+    display_command: "docker exec -it clab-bgp-as-path-prepend-r4 vtysh -c 'show ip bgp 1.1.1.1/32'"
+    check:
+      node: r4
+      command: "vtysh -c 'show ip bgp 1.1.1.1/32 json'"
+      parse: json
+      assert:
+        # paths[0] = best path (schema-derived best-path-first ordering; confirm on deploy).
+        path: "$.paths[0].aspath.string"
+        equals: "65002 65001"
+    hint: >
+      Without the prepend, r4 sees two equal-length paths ("65002 65001" and
+      "65003 65001") and the tie breaks on something other than AS_PATH. Prepend
+      your own ASN on r1's advertisement to r3 (the LESS-preferred upstream):
+      `route-map PREPEND-TO-B permit 10` / `set as-path prepend 65001 65001`,
+      applied with `neighbor 10.0.13.3 route-map PREPEND-TO-B out`. That makes the
+      r3 path "65003 65001 65001 65001" (longer), so r4 prefers r2. Remember to
+      `clear bgp *` (or clear the r1->r3 session) so the change is re-advertised.

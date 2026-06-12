@@ -1,0 +1,67 @@
+# Weight and Origin: the Local Lever and the Tie-Breaker
+
+You have met LOCAL_PREF, the lever that steers an entire AS toward one exit. This lesson covers the two attributes that sit at the **opposite ends** of the best-path decision: **weight**, which wins first but never leaves the router it lives on, and **ORIGIN**, which barely matters until everything else has tied.
+
+They make a useful pair precisely because they are opposites. One is a vendor convenience with global reach over a single box. The other is a real, standardized attribute that travels the internet but only speaks up at the very end.
+
+## Weight: the local lever
+
+**Weight is not a real BGP attribute.** It is a Cisco invention that FRR (and a few others) copied. You will not find it in any BGP UPDATE message, you cannot pull it off the wire, and an RFC will never mention it. It exists purely inside the routing process of one router.
+
+That gives weight three defining traits:
+
+- **It is local to a single router.** Setting weight on r1 tells r1 something. r2 has no idea you did it, because weight is **never advertised** to any neighbor.
+- **Higher wins.** When two paths to the same prefix carry different weights, the larger number takes the route. (Note the direction: weight and LOCAL_PREF both prefer *higher*, while MED prefers lower.)
+- **It is the first step in best-path selection.** Before AS_PATH length, before ORIGIN, before anything else, BGP compares weight. A higher weight **overrides every other attribute** on that router.
+
+Default weight is **0** for paths learned from a neighbor, and **32768** for prefixes this router originates itself (with `network` or `redistribute`). That default is why a router prefers its own locally injected route over one learned from a peer: 32768 beats 0 at the very top of the algorithm.
+
+So weight is the bluntest, fastest hammer you have. If you want *this one router* to favor a particular next hop no matter what the rest of the attributes say, raise the weight:
+
+```
+route-map PREFER-LINK1 permit 10
+ set weight 200
+```
+
+The catch is right there in the word "local." Because weight is never advertised, it influences exactly one router's decision and stops. Contrast that with **LOCAL_PREF**, which is flooded to every iBGP peer and therefore steers the **whole AS** toward a consistent exit. Reach for weight when one box needs an override; reach for LOCAL_PREF when the entire AS should agree.
+
+## ORIGIN: the quiet tie-breaker
+
+**ORIGIN is a well-known mandatory attribute.** Every BGP UPDATE that carries a prefix must include it, and every conformant BGP speaker must understand it. Unlike weight, ORIGIN is the real thing: standardized, advertised, and carried hop by hop across the internet.
+
+ORIGIN records **how a prefix first entered BGP**, and it has exactly three values:
+
+- **`i` (IGP):** the prefix was injected with a `network` statement. This is the cleanest origin and the one you want.
+- **`e` (EGP):** the prefix came from the ancient Exterior Gateway Protocol that BGP replaced. You will essentially never see this in the wild; it is a legacy value.
+- **`?` (incomplete):** the prefix was learned by **redistribution** (for example `redistribute ospf` or `redistribute connected`). BGP cannot vouch for where it really came from, so it marks it incomplete.
+
+You read ORIGIN straight off the **Path column** in `show ip bgp`. Look at the trailing character after the AS_PATH:
+
+```
+   Network          Next Hop      Metric LocPrf Weight Path
+*> 203.0.113.0/24   10.0.0.1                         0 65010 i
+*  198.51.100.0/24  10.0.0.5                         0 65020 ?
+```
+
+That final `i` or `?` is the ORIGIN code. The first route entered via a `network` statement; the second was redistributed.
+
+When two paths tie, BGP prefers the **lower** ORIGIN, ordered `IGP < EGP < incomplete`, so `i` beats `e` beats `?`. In practice that means a `network`-originated path beats a `redistribute`-originated one, all else equal. But notice *where* this comparison happens: ORIGIN is a **low tie-breaker**, sitting near the bottom of the best-path algorithm. It only gets consulted after weight, LOCAL_PREF, AS_PATH length, and others have already failed to pick a winner. ORIGIN rarely decides anything on its own; it is the polite voice that settles a deadlock.
+
+## The contrast at a glance
+
+These two attributes sit at opposite ends of almost every axis that matters:
+
+| Property            | Weight                          | ORIGIN                                  |
+| ------------------- | ------------------------------- | --------------------------------------- |
+| Real BGP attribute? | No (Cisco/FRR convenience)      | Yes (well-known mandatory)              |
+| Advertised?         | Never, local to one router      | Always, carried hop by hop              |
+| Scope               | A single router                 | The whole path, AS to AS               |
+| Best-path position  | First step, overrides all       | Low tie-breaker, near the bottom        |
+| Better value        | Higher wins                     | Lower wins (`i` < `e` < `?`)            |
+| Typical use         | Override one box's choice       | Reflect how a prefix entered BGP        |
+
+Read the table top to bottom and the pattern is clear: weight is a powerful but parochial override, while ORIGIN is a widely shared attribute that almost never gets the final say.
+
+## What's next
+
+You now hold the two bookends of the decision process: **weight** at the very top (local, advertised to no one, higher wins, overrides everything on this router) and **ORIGIN** near the very bottom (well-known mandatory, advertised everywhere, lower wins, a quiet tie-breaker). You have also met LOCAL_PREF and MED along the way. The obvious question is how all of these line up: in exactly what order does a router compare weight, then LOCAL_PREF, then AS_PATH, then ORIGIN, then MED, and the rest? That full ranking is the **best-path algorithm**, and we assemble it end to end next in **`bgp-best-path-algorithm`**.

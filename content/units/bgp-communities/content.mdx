@@ -1,0 +1,114 @@
+# BGP Communities: Tags That Travel
+
+You already know how to match and rewrite routes with route-maps. But how do you signal *intent* to a router three AS hops away that you don't control? You can't reach in and edit their route-map. What you *can* do is attach a small label to your prefix and trust that they have agreed, in advance, to look for it. That label is a **BGP community**.
+
+## What a community actually is
+
+A **community** is an optional-transitive path attribute: a 32-bit value you attach to a prefix to tag it with meaning. It's conventionally written `ASN:value`, two 16-bit halves joined by a colon, so `65001:100` reads as "AS 65001, tag 100." The left half says who owns the tag; the right half is whatever that owner decided it means.
+
+The important word is **transitive**. Because communities are optional-transitive, they ride along with the route as it crosses from one AS to the next (as long as the sending router is told to include them). The tag you stamp on a prefix at your edge can still be sitting on that prefix when it reaches your upstream's upstream.
+
+Here's the part that trips people up: **a community does nothing by itself.** It is pure metadata, a sticky note on the route. No router changes its behavior just because a community is present. Behavior only happens when some router is configured to **match** that community in a route-map and *act* on it. This is the classic pattern worth memorizing:
+
+> **Color the route, act on the color elsewhere.** Tag at ingress, match deeper in your AS or at your upstream.
+
+## Well-known communities
+
+A handful of communities are standardized: every compliant BGP speaker recognizes them and changes its advertising behavior accordingly. These are the exception to the "does nothing by itself" rule, because their action is baked into the protocol.
+
+| Community | Numeric value | What every router does with it |
+|-----------|---------------|--------------------------------|
+| `no-export` | `0xFFFFFF01` | Do not advertise this prefix outside the AS (or outside the confederation). It propagates within your AS but stops at the eBGP edge. |
+| `no-advertise` | `0xFFFFFF02` | Do not advertise this prefix to **any** peer, internal or external. It dies at the router that receives it. |
+| `local-AS` (also called `no-export-subconfed`) | `0xFFFFFF03` | Do not advertise outside the local sub-AS, that is, keep it within the confederation member AS only. |
+| `internet` | `0` | Advertise this prefix to everyone. Effectively "no restriction," used as a match-all in some implementations. |
+
+`no-export` is the everyday workhorse: you originate a more-specific prefix for internal traffic engineering, tag it `no-export`, and your neighbors never see it leak onto the global table.
+
+## Operator-defined communities
+
+Beyond the well-known set, the whole `ASN:nnn` space is yours to define by convention. This is where communities get powerful. An upstream provider publishes a community-to-action map and you, the customer, opt into their policy by tagging your routes. A typical published map looks like:
+
+| You tag the prefix with | Upstream AS 64500 does |
+|-------------------------|------------------------|
+| `64500:80` | Sets LOCAL_PREF 80 (back up this route) |
+| `64500:120` | Sets LOCAL_PREF 120 (prefer this route) |
+| `64500:1` | Prepends their ASN once before re-advertising |
+| `64500:666` | Blackholes the prefix (drops traffic to it) |
+
+You never log in to AS 64500's routers. You just stamp the agreed tag, turn on community sending, and their inbound route-map does the rest. The community is the contract.
+
+## FRR mechanics
+
+In FRR you tag, match, and act on communities through route-maps. **Setting** a community happens in a route-map clause:
+
+```
+route-map TAG-INTERNAL permit 10
+ match ip address prefix-list INTERNAL
+ set community 65001:100
+```
+
+By default `set community` **replaces** any existing communities on the route. To preserve what's already there and add yours, use `additive`:
+
+```
+ set community 65001:100 additive
+```
+
+**Matching** is a two-step move: define a `bgp community-list`, then reference it from a route-map with `match community`:
+
+```
+bgp community-list standard PREFER permit 65001:100
+!
+route-map FROM-CUSTOMER permit 10
+ match community PREFER
+ set local-preference 200
+```
+
+Now the crucial knob. Communities are **not guaranteed to leave the router** unless you ask. You enable that per neighbor:
+
+```
+router bgp 65001
+ neighbor 10.0.12.2 send-community
+```
+
+In current FRR, standard communities are sent by default, but you should state this intent explicitly rather than rely on it, especially for extended or large communities, which are not always on by default. Forget `send-community` and your carefully tagged routes cross the AS boundary stripped bare, and every downstream policy that depended on the tag silently does nothing.
+
+To confirm a community actually landed on a prefix, look at the **Community** line:
+
+```
+show ip bgp 203.0.113.0/24
+```
+
+```
+BGP routing table entry for 203.0.113.0/24
+  ...
+  Community: 65001:100 no-export
+```
+
+## The flow end to end
+
+Put it together and a community is a relay baton: the customer edge colors the route, the tag propagates untouched across each hop, and somewhere downstream a router that recognizes the tag finally acts on it.
+
+<HierarchyTree
+  eyebrow="Tag here, act there"
+  nodes={[
+    { id: "edge", label: "Customer edge", sublabel: "set community 64500:120", tier: 0, w: 280 },
+    { id: "prop", label: "Propagation", sublabel: "tag rides along, send-community on", tier: 1, w: 300, muted: true },
+    { id: "lp", label: "Upstream: prefer", sublabel: "match 64500:120, set LOCAL_PREF 120", tier: 2, w: 300 },
+    { id: "pre", label: "Upstream: deprioritize", sublabel: "match 64500:1, AS-path prepend", tier: 2, w: 300 },
+    { id: "bh", label: "Upstream: blackhole", sublabel: "match 64500:666, drop traffic", tier: 2, w: 300 },
+  ]}
+  edges={[
+    { from: "edge", to: "prop" },
+    { from: "prop", to: "lp" },
+    { from: "prop", to: "pre" },
+    { from: "prop", to: "bh" },
+  ]}
+  caption={<>One tag set at the customer edge survives every hop, then a downstream router matches the agreed community and changes how the prefix is treated.</>}
+/>
+
+That blackhole branch is a real and widely deployed pattern called **RTBH** (Remote-Triggered Black Hole). When a customer is under a DDoS attack, they advertise the targeted prefix tagged with the upstream's agreed blackhole community (often `ASN:666`). The upstream's edge routers match it and drop all traffic to that prefix at their network's edge, soaking up the flood far from the victim. One community tag turns the whole upstream network into a sink, no phone call required.
+
+## What's next
+
+You now know that a community is a travelling tag: optional-transitive, written `ASN:value`, inert until a route-map matches it, and only on the wire when `send-community` is set. You've seen the well-known set, the operator-defined convention, and the FRR commands to set, match, and verify them. Next, in `bgp-filter-with-prefix-lists`, you'll drop into the labs and build the filtering machinery that policy is made of, starting with the prefix-list, the precise tool for deciding which routes are allowed through in the first place.

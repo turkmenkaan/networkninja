@@ -1,0 +1,23 @@
+id: bgp-med-and-tiebreakers
+type: lab
+title: "MED and the Tie-Breaker Ladder"
+summary: "Use MED across two parallel links to tell a neighbor AS which entry path to prefer, then walk the lower tie-breakers."
+path: bgp-fundamentals
+module: path-attributes
+difficulty: intermediate
+estimated_minutes: 25
+prerequisites:
+  - lab-environment-setup
+  - bgp-as-path-prepend
+tags: [bgp, med, tie-breakers, frr]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 2
+  est_ram_mb: 512
+  images: [frrouting/frr]
+  est_boot_seconds: 20
+
+status: published
+version: 1

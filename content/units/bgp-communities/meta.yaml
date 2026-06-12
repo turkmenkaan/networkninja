@@ -1,0 +1,12 @@
+id: bgp-communities
+type: lesson
+title: "BGP Communities: Tags That Travel"
+summary: "Use BGP communities to color routes with policy intent and act on that color elsewhere in your AS or at your upstream."
+path: bgp-fundamentals
+module: route-filtering
+difficulty: intermediate
+estimated_minutes: 14
+prerequisites: [bgp-route-maps]
+tags: [bgp, communities, policy, tagging]
+status: published
+version: 1

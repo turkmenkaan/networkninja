@@ -1,0 +1,29 @@
+# Lab name → containers are named clab-bgp-influence-local-pref-<node>.
+name: bgp-influence-local-pref
+
+topology:
+  nodes:
+    r1:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r1/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r2:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r2/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+    r3:
+      kind: linux
+      image: frrouting/frr:v8.4.1
+      binds:
+        - configs/r3/frr.conf:/etc/frr/frr.conf
+        - configs/daemons:/etc/frr/daemons
+
+  links:
+    # r1 (AS 65001) <----> r2 (AS 65002), upstream A, subnet 10.0.12.0/24
+    - endpoints: ["r1:eth1", "r2:eth1"]
+    # r1 (AS 65001) <----> r3 (AS 65003), upstream B, subnet 10.0.13.0/24
+    - endpoints: ["r1:eth2", "r3:eth1"]

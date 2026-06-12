@@ -44,22 +44,22 @@ modules:
   - id: path-attributes
     title: "Path Attributes & Best-Path Selection"
     units:
-      - { id: bgp-attribute-types,         status: planned }
-      - { id: bgp-as-path-and-next-hop,    status: planned }
-      - { id: bgp-local-pref-and-med,      status: planned }
-      - { id: bgp-weight-and-origin,       status: planned }
-      - { id: bgp-best-path-algorithm,     status: planned }
-      - { id: bgp-influence-local-pref,    status: planned }
-      - { id: bgp-as-path-prepend,         status: planned }
-      - { id: bgp-med-and-tiebreakers,     status: planned }
-      - { id: bgp-path-selection-capstone, status: planned }
+      - { id: bgp-attribute-types,         status: published }
+      - { id: bgp-as-path-and-next-hop,    status: published }
+      - { id: bgp-local-pref-and-med,      status: published }
+      - { id: bgp-weight-and-origin,       status: published }
+      - { id: bgp-best-path-algorithm,     status: published }
+      - { id: bgp-influence-local-pref,    status: published }
+      - { id: bgp-as-path-prepend,         status: published }
+      - { id: bgp-med-and-tiebreakers,     status: published }
+      - { id: bgp-path-selection-capstone, status: published }
 
   - id: route-filtering
     title: "Route Filtering & Policy"
     units:
-      - { id: bgp-prefix-lists,            status: planned }
-      - { id: bgp-route-maps,              status: planned }
-      - { id: bgp-communities,             status: planned }
-      - { id: bgp-filter-with-prefix-lists, status: planned }
-      - { id: bgp-route-maps-and-communities, status: planned }
-      - { id: bgp-policy-capstone,         status: planned }
+      - { id: bgp-prefix-lists,            status: published }
+      - { id: bgp-route-maps,              status: published }
+      - { id: bgp-communities,             status: published }
+      - { id: bgp-filter-with-prefix-lists, status: published }
+      - { id: bgp-route-maps-and-communities, status: published }
+      - { id: bgp-policy-capstone,         status: published }

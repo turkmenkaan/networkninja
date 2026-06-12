@@ -1,0 +1,112 @@
+# Steer Outbound Traffic with LOCAL_PREF
+
+Your AS is dual-homed: two upstreams, two cables, two ways out to the internet. That's great for resilience, but it raises a question you now get to answer: when both upstreams can reach the same destination, which one does *your* traffic actually leave through?
+
+Right now BGP is picking for you, quietly, with a tie-breaker you didn't choose. In this lab you'll take the wheel. You have two upstreams, `r2` (AS 65002, call it upstream A) and `r3` (AS 65003, upstream B), and both advertise the very same prefix `100.64.0.0/24`. You'll make every packet your AS sends toward that prefix leave via upstream A, using the single most important outbound lever in BGP: **LOCAL_PREF**.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "upstream A, adv 100.64.0.0/24", col: 0, row: 0 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32 (your AS)", col: 1, row: 0 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "upstream B, adv 100.64.0.0/24", col: 2, row: 0 },
+  ]}
+  links={[
+    { from: "r2", to: "r1" },
+    { from: "r1", to: "r3" },
+  ]}
+  legend="r1<->r2 over 10.0.12.0/24 (r1 .1, r2 .2); r1<->r3 over 10.0.13.0/24 (r1 .1, r3 .3)"
+  caption={<>Your router r1 sits in the middle, dual-homed to two upstreams. Both upstreams advertise the same destination 100.64.0.0/24, so r1 has two valid exits and must choose one for outbound traffic.</>}
+/>
+
+The two eBGP sessions are **already up** and routes are already flowing; that part is pre-staged. The decision of which exit to use is the part you'll build.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots all three routers. Drop into `r1`'s FRR shell:
+
+```bash
+docker exec -it clab-bgp-influence-local-pref-r1 vtysh
+```
+
+## Step 1: Observe the default choice
+
+On `r1`, look at how BGP sees `100.64.0.0/24`:
+
+```
+r1# show ip bgp 100.64.0.0/24
+```
+
+You should see **two paths** for the prefix: one learned from `10.0.12.2` (upstream A, AS 65002) and one from `10.0.13.3` (upstream B, AS 65003). Exactly one is marked best (with a `>`). Both AS_PATHs are the same length (a single hop), the metrics match, and LOCAL_PREF is the default `100` on both. With everything else tied, BGP falls through to a low-level tie-breaker (such as the lower neighbor router-id or peer address) to pick the winner.
+
+That works, but it is arbitrary. You did not choose it, and it could flip if a router-id changes. Let's make the choice explicit and intentional.
+
+## Step 2: Prefer upstream A with LOCAL_PREF
+
+LOCAL_PREF is checked very early in the best-path algorithm, before AS_PATH length, and the rule is simple: **higher LOCAL_PREF wins**. It is also AS-wide: it is the one attribute every router inside your AS agrees on, which makes it the natural lever for "everyone in my AS, please exit this way."
+
+You set it with an **inbound** route-map on the neighbor whose routes you want to prefer. Apply it to upstream A (`10.0.12.2`):
+
+```
+r1# configure terminal
+r1(config)# route-map PREFER-UPSTREAM-A permit 10
+r1(config-route-map)# set local-preference 200
+r1(config-route-map)# exit
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 10.0.12.2 route-map PREFER-UPSTREAM-A in
+r1(config-router)# end
+r1# write memory
+```
+
+Policy changes are not applied retroactively to routes already in the table, so nudge BGP to re-evaluate what it learned from the neighbor:
+
+```
+r1# clear ip bgp *
+```
+
+(A soft inbound reset, `clear ip bgp * soft in`, does the same job without tearing the sessions down. `clear ip bgp *` is fine in a lab.)
+
+## Step 3: Verify the best path moved
+
+Give it a couple of seconds, then look again:
+
+```
+r1# show ip bgp 100.64.0.0/24
+```
+
+The path via `10.0.12.2` (upstream A) should now carry **LocPrf 200** and be marked best (`>`), while the path via `10.0.13.3` still shows the default `100`. Because 200 beats 100, the algorithm stops right there and never even gets to the AS_PATH comparison. Your AS now sends all traffic for `100.64.0.0/24` out through upstream A.
+
+✅ **Objective 1:** r1 learns `100.64.0.0/24` from **both** upstreams (two paths in the table).
+
+✅ **Objective 2:** r1's **best** path for `100.64.0.0/24` is via upstream A (`10.0.12.2`, AS 65002), chosen by the higher LOCAL_PREF.
+
+## Troubleshooting
+
+- **Best path did not move?** Confirm the route-map is applied **inbound** (`... route-map PREFER-UPSTREAM-A in`) on the **r2** neighbor, not r3, and that you ran `clear ip bgp *` (or `clear ip bgp * soft in`) afterward. Without the clear, the old route stays in the table at LocPrf 100.
+- **Remember the direction of the rule:** **higher** LOCAL_PREF wins. Setting it to something *lower* than 100 would steer traffic to the *other* upstream.
+- **Only one path showing?** A session may be down. Check `show ip bgp summary` for two Established neighbors, and that `no bgp ebgp-requires-policy` is present so routes are exchanged.
+- **Route-map has no effect at all?** A route-map with a `permit` clause and a `set` but no `match` applies the `set` to every route, which is what you want here. If you added a `match` that nothing matches, the `set` never fires.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- When two upstreams advertise the **same** prefix, BGP picks one exit, and without policy it leans on an arbitrary tie-breaker.
+- **LOCAL_PREF** is the AS-wide lever for **outbound** traffic engineering: it is compared early in best-path selection and **higher wins**.
+- You set it with an **inbound** route-map on the preferred neighbor (`set local-preference 200`), then re-evaluate routes with a clear or soft reset.
+- LOCAL_PREF stays inside your AS (it is never sent to eBGP peers), which is exactly why it can make your whole AS agree on one exit.
+
+**Next:** influence the traffic coming *back* to you, and lengthen an AS_PATH to make a path look worse on purpose, in `bgp-as-path-prepend`.

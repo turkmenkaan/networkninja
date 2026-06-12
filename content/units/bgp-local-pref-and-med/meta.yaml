@@ -1,0 +1,12 @@
+id: bgp-local-pref-and-med
+type: lesson
+title: "LOCAL_PREF and MED: Steering Traffic"
+summary: "Use LOCAL_PREF to steer your AS's outbound traffic and MED to hint a neighbor AS about your preferred inbound entry point."
+path: bgp-fundamentals
+module: path-attributes
+difficulty: intermediate
+estimated_minutes: 14
+prerequisites: [bgp-as-path-and-next-hop]
+tags: [bgp, local-pref, med, path-attributes, traffic-engineering]
+status: published
+version: 1

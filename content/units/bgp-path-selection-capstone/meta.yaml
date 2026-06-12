@@ -1,0 +1,23 @@
+id: bgp-path-selection-capstone
+type: lab
+mode: challenge
+title: "Capstone: Engineer a Dual-Homed Edge"
+summary: "From a blank-slate edge router, engineer both outbound (LOCAL_PREF) and inbound (AS_PATH prepend) traffic so a dual-homed AS prefers one upstream over the other."
+path: bgp-fundamentals
+module: path-attributes
+difficulty: advanced
+estimated_minutes: 40
+prerequisites:
+  - lab-environment-setup
+  - bgp-med-and-tiebreakers
+tags: [bgp, path-selection, traffic-engineering, capstone, challenge, frr]
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 4
+  est_ram_mb: 1024
+  images: [frrouting/frr]
+  est_boot_seconds: 30
+
+status: published
+version: 1

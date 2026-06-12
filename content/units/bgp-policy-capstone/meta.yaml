@@ -1,0 +1,23 @@
+id: bgp-policy-capstone
+type: lab
+mode: challenge
+title: "Capstone: Build an ISP Edge Policy"
+summary: "From a blank slate, build the inbound policy for a small ISP: filter a customer's bogon leak, tag accepted routes with a community, and raise their LOCAL_PREF so they win."
+path: bgp-fundamentals
+module: route-filtering
+difficulty: advanced
+estimated_minutes: 40
+prerequisites:
+  - lab-environment-setup
+  - bgp-route-maps-and-communities
+tags: [bgp, policy, prefix-list, route-map, communities, capstone, frr]
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 3
+  est_ram_mb: 768
+  images: [frrouting/frr]
+  est_boot_seconds: 25
+
+status: published
+version: 1

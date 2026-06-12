@@ -1,0 +1,110 @@
+# Capstone: Engineer a Dual-Homed Edge
+
+You run **AS 65001**. You bought two upstream links: one to a **primary** provider (upstream A) and one to a **backup** (upstream B). Both can reach the internet. Both work. But you are paying for the primary and you want it used, in *both* directions: traffic you send out and traffic the world sends back to you should ride the primary, with the backup sitting idle until the primary fails.
+
+Here is the catch that trips up every new operator: **outbound and inbound are two completely different problems.** You control which way packets leave with `LOCAL_PREF`, a knob that lives entirely inside your AS. You do **not** control which way the world sends packets back, because that decision happens in other people's routers. The only lever you have on inbound is what you *advertise*, so you make the backup path look worse by **prepending** your own AS to it. This capstone makes you wire up both.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Your AS, dual-homed to a primary and a backup"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "your edge - lo 1.1.1.1/32", col: 1, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "upstream A - PRIMARY", col: 0, row: 1 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "upstream B - BACKUP", col: 2, row: 1 },
+    { id: "r4", name: "r4", asn: "AS 65004", sublabel: "internet - originates 100.64.0.0/24", col: 1, row: 2 },
+  ]}
+  links={[
+    { from: "r1", to: "r2", label: "10.0.12.0/24" },
+    { from: "r1", to: "r3", label: "10.0.13.0/24" },
+    { from: "r2", to: "r4", label: "10.0.24.0/24" },
+    { from: "r3", to: "r4", label: "10.0.34.0/24" },
+  ]}
+  legend="r1 reaches the internet (r4) two ways: through A (primary) or through B (backup)"
+  caption={<>r1 (your edge) peers with r2 on 10.0.12.0/24 (.1/.2) and with r3 on 10.0.13.0/24 (r1 .1, r3 .3). Both upstreams reach r4 (the internet), which originates the destination prefix 100.64.0.0/24. Only r1 is yours to configure; r2, r3, and r4 are already running.</>}
+/>
+
+Your edge router `r1` is a **blank slate**: it has interface and loopback addressing and nothing else. The two upstreams (`r2`, `r3`) and the internet (`r4`) are **already configured and running**; you do not touch them. `r4` originates a single destination prefix, `100.64.0.0/24`, and hears your `1.1.1.1/32` back through whichever upstream advertises it.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots all four routers. Drop into your edge router `r1`:
+
+```bash
+docker exec -it clab-bgp-path-selection-capstone-r1 vtysh
+```
+
+You can open the upstreams and the internet the same way to inspect them, but you only **configure** `r1`:
+
+```bash
+docker exec -it clab-bgp-path-selection-capstone-r2 vtysh
+docker exec -it clab-bgp-path-selection-capstone-r4 vtysh
+```
+
+## Your mission
+
+Configure **only `r1`** so that:
+
+- It runs **eBGP to both upstreams**: `remote-as 65002` toward A (`10.0.12.2`) and `remote-as 65003` toward B (`10.0.13.3`).
+- It **advertises your prefix** `1.1.1.1/32` into BGP so the world can reach you.
+- **OUTBOUND**, your best path to `100.64.0.0/24` prefers **upstream A**, by raising `LOCAL_PREF` on the routes you learn from A.
+- **INBOUND**, the world's best path back to `1.1.1.1/32` prefers **upstream A**, by **prepending** your own AS on the routes you advertise toward **B** so that path looks longer.
+
+Set `no bgp ebgp-requires-policy` so RFC 8212 does not silently filter your eBGP routes.
+
+## Objectives
+
+- ✅ Outbound: `r1`'s best path to `100.64.0.0/24` is via the primary, AS_PATH `65002 65004`.
+- ✅ Inbound: `r4`'s best path back to `1.1.1.1/32` is via the primary, AS_PATH `65002 65001`.
+- ✅ The eBGP session from `r1` to the primary `10.0.12.2` is **Established**.
+
+## Hints
+
+Terse nudges only. This is your proof, so reach for these only when stuck.
+
+- **Outbound is LOCAL_PREF.** Higher wins, and it is the first real tiebreaker. Set it with an **inbound** route-map on the session toward the **preferred** upstream (A).
+- **Inbound is AS_PATH.** You cannot set LOCAL_PREF in someone else's router. Make the backup path look longer with `set as-path prepend` on an **outbound** route-map toward the **non-preferred** upstream (B).
+- **Verify inbound from r4, not r1.** The whole point is that the *far* end picks A. Check `show ip bgp 1.1.1.1/32` on `r4` and read the AS_PATH it chose.
+
+## Verify
+
+On your edge `r1`, confirm both sessions are up and that outbound prefers A:
+
+```
+r1# show ip bgp summary
+r1# show ip bgp 100.64.0.0/24
+```
+
+The best path to `100.64.0.0/24` should carry AS_PATH `65002 65004` (through A), not `65003 65004` (through B). Then check inbound from the internet's point of view on `r4`:
+
+```bash
+docker exec -it clab-bgp-path-selection-capstone-r4 vtysh
+```
+
+```
+r4# show ip bgp 1.1.1.1/32
+```
+
+`r4` should pick the path with AS_PATH `65002 65001` (through A). The path through B now reads `65003 65001 65001 65001`, longer because of your prepend, so r4 rejects it.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- **Outbound and inbound are separate engineering problems** with separate tools. One config file, two policies, two directions.
+- **`LOCAL_PREF` steers outbound** and stays inside your AS. It is applied **inbound** (on routes you receive) on the session toward your preferred upstream, and higher wins.
+- **AS_PATH prepend steers inbound**, the only practical lever you have on traffic other people send you. It is applied **outbound** (on routes you advertise) toward the upstream you want the world to avoid, making that path look longer.
+- A route-map is **directional**: `... in` shapes what you accept, `... out` shapes what you announce. Picking the wrong direction is the classic dual-homing mistake.
+
+**Next:** you steered whole prefixes; now learn to match *specific* prefixes with `bgp-prefix-lists`.

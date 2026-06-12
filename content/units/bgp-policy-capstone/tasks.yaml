@@ -1,0 +1,86 @@
+# Objectives + verification for bgp-policy-capstone.
+# Each check is read-only and idempotent: it observes state, never changes it.
+# Tier 1 renders these as a self-verify checklist (commands shown to the learner).
+# Tier 2 executes the identical checks against the live nodes to auto-grade.
+#
+# HONESTY / TO-CONFIRM: the JSON paths below are schema-derived from FRR 8.4's
+# `show ip bgp summary json` and `show ip bgp <prefix> json` output and have NOT
+# yet been run through a live FRR deploy. Confirm them on a real deploy before
+# relying on them. In particular, verify the exact shape of:
+#   - peer state: assumed `$.ipv4Unicast.peers['<peer-ip>'].state` == "Established".
+#   - presence-of-path: assumed `$.paths` array exists when a prefix is in the
+#     table (and the object is empty/absent when it is not).
+#   - local-preference: assumed `$.paths[0].locPrf` (an integer).
+#   - community: assumed `$.paths[0].community.string` (space-separated list).
+
+objectives:
+  - id: customer-session-up
+    description: "The eBGP session from r2 to the customer r1 (10.0.12.1) is Established."
+    # Command the learner runs (human-readable output). The check below is the
+    # JSON-based equivalent for the Tier-2 auto-grader.
+    display_command: "docker exec -it clab-bgp-policy-capstone-r2 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['10.0.12.1'].state"
+        equals: "Established"
+    hint: >
+      Start a BGP process: router bgp 65002, no bgp ebgp-requires-policy, then
+      neighbor 10.0.12.1 remote-as 65001. The remote-as must be the customer's
+      real AS (65001), not yours.
+
+  - id: upstream-session-up
+    description: "The eBGP session from r2 to the upstream r3 (10.0.23.3) is Established."
+    display_command: "docker exec -it clab-bgp-policy-capstone-r2 vtysh -c 'show ip bgp summary'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp summary json'"
+      parse: json
+      assert:
+        path: "$.ipv4Unicast.peers['10.0.23.3'].state"
+        equals: "Established"
+    hint: >
+      neighbor 10.0.23.3 remote-as 65003. Add neighbor 10.0.23.3 send-community
+      so the community you tag onto customer routes can travel to the upstream.
+
+  - id: bogon-filtered
+    description: "r2 accepts the customer's real prefixes (203.0.113.0/24, 198.51.100.0/24) but DROPS the 192.168.0.0/16 bogon leak."
+    # The learner-facing proof: 192.168.0.0/16 must be ABSENT (Network not in
+    # table). The auto-grader asserts the legit prefix is present; the bogon's
+    # absence is the implicit-deny half of the same prefix-list.
+    display_command: "docker exec -it clab-bgp-policy-capstone-r2 vtysh -c 'show ip bgp 192.168.0.0/16'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 203.0.113.0/24 json'"
+      parse: json
+      # TO-CONFIRM: paths-exists shape is schema-derived; confirm on a real deploy.
+      assert:
+        path: "$.paths"
+        exists: true
+    hint: >
+      Build ip prefix-list CUST-OK permitting ONLY 203.0.113.0/24 and
+      198.51.100.0/24, then match it in an inbound route-map on the customer
+      session. The route-map's implicit deny drops 192.168.0.0/16. Run
+      `show ip bgp 192.168.0.0/16` on r2 and confirm it returns
+      "% Network not in table".
+
+  - id: customer-route-tagged-and-preferred
+    description: "On r2, 203.0.113.0/24 has local-preference 200 and is tagged community 65002:1000."
+    display_command: "docker exec -it clab-bgp-policy-capstone-r2 vtysh -c 'show ip bgp 203.0.113.0/24'"
+    check:
+      node: r2
+      command: "vtysh -c 'show ip bgp 203.0.113.0/24 json'"
+      parse: json
+      # TO-CONFIRM: locPrf field name/shape is schema-derived; confirm on a real
+      # deploy. Alternative assert: $.paths[0].community.string contains "65002:1000".
+      assert:
+        path: "$.paths[0].locPrf"
+        equals: 200
+    hint: >
+      In the same inbound route-map clause that matches CUST-OK, add both
+      `set local-preference 200` (so customer routes beat the upstream) and
+      `set community 65002:1000` (so you can recognize customer-originated
+      routes later). LocPrf 200 instead of the default 100 confirms the policy
+      ran.

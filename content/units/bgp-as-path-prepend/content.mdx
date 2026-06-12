@@ -1,0 +1,128 @@
+# Steer Inbound Traffic with AS_PATH Prepending
+
+You run AS 65001. You advertise one prefix, `1.1.1.1/32`, and you are dual-homed: two upstreams, `r2` (AS 65002) and `r3` (AS 65003), each carry your route out into the world. That redundancy is great. The problem is control. By default the rest of the internet picks whichever way it likes, and right now a distant observer, `r4` (AS 65004), sees both paths as equally good and could send your inbound traffic through either one.
+
+Suppose you want inbound traffic to prefer `r2`. You cannot reach into `r4` and tell it what to do, it is in someone else's network. But you can change what you *say* to `r3`. By making the route you advertise to `r3` carry a longer **AS_PATH**, you make that path look worse to everyone downstream, and `r4` quietly settles on `r2` instead. That is **AS_PATH prepending**, the classic inbound traffic-engineering lever.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "advertises 1.1.1.1/32", col: 1, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "upstream A", col: 0, row: 1 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "upstream B", col: 2, row: 1 },
+    { id: "r4", name: "r4", asn: "AS 65004", sublabel: "far observer", col: 1, row: 2 },
+  ]}
+  links={[
+    { from: "r1", to: "r2" },
+    { from: "r1", to: "r3" },
+    { from: "r2", to: "r4" },
+    { from: "r3", to: "r4" },
+  ]}
+  legend="A diamond: r1 dual-homed to r2 and r3, both feeding r4. r1<->r2 10.0.12.0/24, r1<->r3 10.0.13.0/24, r2<->r4 10.0.24.0/24, r3<->r4 10.0.34.0/24."
+  caption={<>r1 originates 1.1.1.1/32 to two upstreams. r4 hears it twice and picks one best path. Your job is to make r4 prefer the path through r2.</>}
+/>
+
+Every interface address and all four eBGP sessions are **already configured**. The only thing missing is the prepend on `r1`; that is the part you will build.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the router configs). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots all four routers. The interesting view is from the far observer, `r4`, so drop into its FRR shell:
+
+```bash
+docker exec -it clab-bgp-as-path-prepend-r4 vtysh
+```
+
+## Step 1: See the tie
+
+On `r4`, look at how it currently reaches your prefix:
+
+```
+r4# show ip bgp 1.1.1.1/32
+```
+
+You will see **two** paths for `1.1.1.1/32`:
+
+- one via `r2`, with AS_PATH `65002 65001`
+- one via `r3`, with AS_PATH `65003 65001`
+
+Both are **two AS hops long**. As far as the AS_PATH tiebreaker is concerned, they are dead even, and `r4` falls through to a lower tiebreaker (such as the lowest neighbor router-id) to pick a winner. That is not control, that is luck. We want `r4` to choose `r2` on purpose.
+
+## Step 2: Prepend toward r3 on r1
+
+Open `r1` in another terminal:
+
+```bash
+docker exec -it clab-bgp-as-path-prepend-r1 vtysh
+```
+
+The trick: on the advertisement you send `r3` (your *less* preferred upstream), stuff extra copies of your own ASN into the AS_PATH. Build a route-map that prepends `65001` twice, and apply it **outbound** to the `r3` neighbor:
+
+```
+r1# configure terminal
+r1(config)# route-map PREPEND-TO-B permit 10
+r1(config-route-map)# set as-path prepend 65001 65001
+r1(config-route-map)# exit
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 10.0.13.3 route-map PREPEND-TO-B out
+r1(config-router)# end
+r1# write memory
+```
+
+Then push the new advertisement out so the downstream routers re-learn it:
+
+```
+r1# clear bgp * out
+```
+
+You only changed what you *say* to `r3`. The route you hand `r2` is untouched.
+
+> You prepend toward the upstream you want to **de**-prefer, not the one you want to win. It is counterintuitive at first: lengthening the r3 path is what makes the r2 path look better by comparison.
+
+## Step 3: Verify on r4
+
+Back on `r4`, look again:
+
+```
+r4# show ip bgp 1.1.1.1/32
+```
+
+Now the two paths are no longer equal:
+
+- via `r2`: `65002 65001` (still two hops)
+- via `r3`: `65003 65001 65001 65001` (four hops, your two prepends plus the originals)
+
+BGP prefers the **shorter** AS_PATH, so `r4` now marks the path via `r2` as best (look for the `>` best-path marker on the `r2` line). You changed inbound path selection on a router you do not even control, just by editing one outbound policy on your own edge.
+
+✅ **Objective:** on `r4`, `show ip bgp 1.1.1.1/32` lists a path for the prefix.
+
+✅ **Objective:** on `r4`, the **best** path to `1.1.1.1/32` is via `r2` with AS_PATH `65002 65001`.
+
+## Troubleshooting
+
+- **Prepend the right way.** You prepend **outbound, toward the upstream you want to be LESS preferred** (here, `r3`). Prepending toward `r2` would push traffic to `r3`, the opposite of the goal.
+- **Longer AS_PATH = less preferred.** Each prepend adds one AS hop. If `r4` still load-balances or picks `r3`, you likely did not add enough prepends or applied the route-map to the wrong neighbor (or wrong direction).
+- **The receiver decides.** Prepending does not *force* anything; it only makes one path look worse. `r4` is free to weigh higher-priority attributes (like LOCAL_PREF) first. Always confirm the outcome **on `r4`**, not on `r1`, because `r1` cannot see who won.
+- **No change after editing?** Re-advertise with `clear bgp * out` on `r1` so the longer path actually propagates, and confirm all four sessions are `Established` with `show ip bgp summary`.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- **AS_PATH prepending** is the standard knob for influencing **inbound** traffic: you make a path look longer so downstream networks avoid it.
+- You prepend on the advertisement you send to the **less-preferred** upstream, applied **outbound**, and the effect shows up on routers far downstream that compare AS_PATH length.
+- It is a **hint**, not a command. A downstream network can still override it with a higher-priority attribute such as LOCAL_PREF. The receiver always has the final say.
+
+**Next:** see how BGP breaks ties when the AS_PATH lengths really are equal, and which attributes outrank which, in `bgp-med-and-tiebreakers`.

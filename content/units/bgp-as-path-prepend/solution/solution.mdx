@@ -1,0 +1,47 @@
+# Solution: Steer Inbound Traffic with AS_PATH Prepending
+
+The lab is complete when the far observer `r4` prefers the path through `r2` (upstream A) for `1.1.1.1/32`. The only configuration needed is a route-map on `r1` that prepends `r1`'s own ASN on the advertisement sent to `r3`, applied outbound to that neighbor.
+
+## r1 (AS 65001)
+
+```
+route-map PREPEND-TO-B permit 10
+ set as-path prepend 65001 65001
+!
+router bgp 65001
+ neighbor 10.0.13.3 route-map PREPEND-TO-B out
+```
+
+After applying it, re-advertise so the longer path propagates:
+
+```
+r1# clear bgp * out
+```
+
+`r2`, `r3`, and `r4` need no changes; they are pre-built. The complete resulting config is in `solution/r1/frr.conf` (and the unchanged `solution/r2|r3|r4/frr.conf`).
+
+## Why it influences INBOUND traffic
+
+- A network's **inbound** traffic enters via whichever path the *rest of the world* selects toward its prefix. You cannot configure `r4` directly, but you can control the AS_PATH it sees by controlling what your own edge advertises.
+- `set as-path prepend 65001 65001` adds two extra copies of your ASN to the route you hand `r3`. Downstream, `r4` now compares `65002 65001` (via `r2`) against `65003 65001 65001 65001` (via `r3`).
+- BGP prefers the **shortest AS_PATH**, so `r4` chooses `r2`. Because best-path selection happens on the receivers, prepending is an **inbound** lever even though you apply it **outbound** on your own router.
+- You prepend toward the upstream you want to be **less** preferred. Prepending toward `r2` would have the opposite effect.
+
+## Why it is only a HINT
+
+AS_PATH length sits **below** LOCAL_PREF (and WEIGHT) in BGP's decision process. Any downstream network that sets a higher LOCAL_PREF for the `r3` path will keep using `r3` no matter how many times you prepend. Prepending nudges the default outcome; it does not override another operator's explicit preference. The receiver decides, which is why you always verify on `r4`.
+
+## Verifying
+
+```
+r4# show ip bgp 1.1.1.1/32 json
+```
+
+The checks assert (on `r4`):
+
+```
+$.paths              exists
+$.paths[0].aspath.string == "65002 65001"
+```
+
+`paths[0]` is FRR's best path (best-path-first ordering). After the prepend, the best path is the two-hop path via `r2`, while the path via `r3` carries the longer `65003 65001 65001 65001`.
