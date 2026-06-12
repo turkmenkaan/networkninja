@@ -1,0 +1,79 @@
+# Path manifest - machine-readable source of truth for the Production BGP path.
+# Human-readable outline lives in docs/curriculum/bgp-production.md.
+# Units are referenced by id; their content lives in content/units/<id>/.
+# `status` lets the app render unbuilt units as "coming soon".
+#
+# NOTE: every unit below is `planned`. None are authored yet; this manifest
+# exists so the site can advertise the path as coming soon. As units are built,
+# flip them planned -> published (parent-only), exactly as the BGP Fundamentals
+# path was. This path's prerequisite is the entire BGP Fundamentals path.
+
+id: bgp-production
+title: "Production BGP"
+summary: >
+  Run BGP the way operators do: scale iBGP with route reflectors, engineer
+  traffic across multiple upstreams, secure the edge with filtering and RPKI,
+  converge fast and fail gracefully, and operate it day to day - hands-on with
+  FRR. Builds on BGP Fundamentals.
+network_os: frrouting/frr
+status: planned
+
+modules:
+  - id: scaling-ibgp
+    title: "Scaling iBGP: Route Reflectors & Confederations"
+    units:
+      - { id: bgp-ibgp-scaling-problem,        status: planned }
+      - { id: bgp-route-reflector-concepts,    status: planned }
+      - { id: bgp-configure-route-reflector,   status: planned }
+      - { id: bgp-route-reflector-design,      status: planned }
+      - { id: bgp-redundant-route-reflectors,  status: planned }
+      - { id: bgp-confederations,              status: planned }
+      - { id: bgp-scaling-capstone,            status: planned }
+
+  - id: multihoming-and-te
+    title: "Multihoming & Traffic Engineering"
+    units:
+      - { id: bgp-multihoming-design,          status: planned }
+      - { id: bgp-communities-for-te,          status: planned }
+      - { id: bgp-community-traffic-engineering, status: planned }
+      - { id: bgp-conditional-advertisement,   status: planned }
+      - { id: bgp-conditional-advertisement-lab, status: planned }
+      - { id: bgp-multipath-and-add-path,      status: planned }
+      - { id: bgp-traffic-engineering-capstone, status: planned }
+
+  - id: securing-bgp
+    title: "Securing BGP: Filtering, RPKI & RTBH"
+    units:
+      - { id: bgp-security-threat-model,       status: planned }
+      - { id: bgp-filtering-at-scale,          status: planned }
+      - { id: bgp-robust-edge-filtering,       status: planned }
+      - { id: bgp-rpki-and-rov,                status: planned }
+      - { id: bgp-rpki-origin-validation,      status: planned }
+      - { id: bgp-rtbh-blackhole,              status: planned }
+      - { id: bgp-security-capstone,           status: planned }
+
+  - id: convergence-and-failover
+    title: "Convergence, Stability & Fast Failover"
+    units:
+      - { id: bgp-convergence-explained,       status: planned }
+      - { id: bgp-bfd-and-timers,              status: planned }
+      - { id: bgp-bfd-fast-failover,           status: planned }
+      - { id: bgp-graceful-restart-and-shutdown, status: planned }
+      - { id: bgp-graceful-shutdown-maintenance, status: planned }
+      - { id: bgp-route-flap-damping,          status: planned }
+      - { id: bgp-resilience-capstone,         status: planned }
+
+  - id: operating-bgp
+    title: "Operating BGP at Scale (Day-2)"
+    units:
+      - { id: bgp-peer-groups-and-dynamic-neighbors, status: planned }
+      - { id: bgp-peer-groups-lab,             status: planned }
+      - { id: bgp-observability,               status: planned }
+      - { id: bgp-bmp-monitoring,              status: planned }
+      - { id: bgp-troubleshooting-methodology, status: planned }
+      - { id: bgp-operations-capstone,         status: planned }
+
+  - id: production-capstone
+    title: "Capstone: Run a Transit AS"
+    units:
+      - { id: bgp-production-capstone,         status: planned }

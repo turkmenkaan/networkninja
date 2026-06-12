@@ -1,0 +1,61 @@
+# Path manifest - machine-readable source of truth for the OSPF Fundamentals path.
+# Human-readable outline lives in docs/curriculum/ospf-fundamentals.md.
+# Units are referenced by id; their content lives in content/units/<id>/.
+# `status` lets the app render unbuilt units as "coming soon".
+#
+# NOTE: every unit below is `planned`. None are authored yet; this manifest
+# exists so the site can advertise the path as coming soon. As units are built,
+# flip them planned -> published (parent-only), exactly as the BGP path was.
+
+id: ospf-fundamentals
+title: "OSPF Fundamentals"
+summary: >
+  From "how does a router pick a route" to building single- and multi-area OSPF,
+  controlling LSA flooding with stub areas, redistributing externals, and running
+  OSPF as the IGP underlay that BGP rides on - hands-on with FRR.
+network_os: frrouting/frr
+status: planned
+
+modules:
+  - id: routing-foundations
+    title: "Routing Foundations"
+    units:
+      - { id: ospf-routing-table-and-preference, status: planned }
+      - { id: ospf-static-routing,               status: planned }
+      - { id: ospf-link-state-concept,           status: planned }
+
+  - id: single-area-ospf
+    title: "Single-Area OSPF"
+    units:
+      - { id: ospf-areas-and-router-types,       status: planned }
+      - { id: ospf-adjacencies-and-lsas,         status: planned }
+      - { id: ospf-observe-a-session,            status: planned }
+      - { id: ospf-enable-single-area,           status: planned }
+      - { id: ospf-dr-bdr-election,              status: planned }
+      - { id: ospf-single-area-capstone,         status: planned }
+
+  - id: multi-area-ospf
+    title: "Multi-Area OSPF"
+    units:
+      - { id: ospf-multi-area-design,            status: planned }
+      - { id: ospf-cost-and-path-selection,      status: planned }
+      - { id: ospf-build-multi-area,             status: planned }
+      - { id: ospf-route-summarization,          status: planned }
+      - { id: ospf-multi-area-capstone,          status: planned }
+
+  - id: stub-and-redistribution
+    title: "Stub Areas & Redistribution"
+    units:
+      - { id: ospf-external-routes-and-lsas,     status: planned }
+      - { id: ospf-stub-and-nssa,                status: planned }
+      - { id: ospf-redistribute-static,          status: planned }
+      - { id: ospf-configure-stub-areas,         status: planned }
+      - { id: ospf-redistribution-capstone,      status: planned }
+
+  - id: ospf-bgp-integration
+    title: "OSPF and BGP Together"
+    units:
+      - { id: ospf-as-bgp-underlay,              status: planned }
+      - { id: ospf-bgp-redistribution-and-default, status: planned }
+      - { id: ospf-underlay-for-ibgp,            status: planned }
+      - { id: ospf-bgp-edge-capstone,            status: planned }
