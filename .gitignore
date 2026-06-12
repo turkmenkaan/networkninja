@@ -19,3 +19,6 @@ web/.data/
 *.log
 npm-debug.log*
 .vercel
+
+# lighthouse / audit reports (local artifacts)
+*.report.html

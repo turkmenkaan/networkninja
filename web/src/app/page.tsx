@@ -1,17 +1,81 @@
 import Link from "next/link";
-import { loadPath, pathStats, flattenPath } from "@/lib/content/paths";
+import {
+  loadPath,
+  pathStats,
+  listPathIds,
+} from "@/lib/content/paths";
 import { Logo } from "@/components/Logo";
 import { ArrowIcon, FlaskIcon, BookIcon } from "@/components/ui";
 import { NotifySignup } from "@/components/NotifySignup";
+import { JsonLd } from "@/components/JsonLd";
+import { Faq } from "@/components/Faq";
+import { SITE_URL, SITE_NAME } from "@/lib/site";
+
+const HOME_FAQ = [
+  {
+    q: "Is NetworkNinja free?",
+    a: "Yes. Every lesson and every lab is free right now. The labs run on your own machine with Containerlab, so there is nothing to pay for and no account required to start.",
+  },
+  {
+    q: "Do I need to install anything?",
+    a: "The lessons need only a browser. To run a lab you need Docker and Containerlab, on Linux directly or through Docker Desktop's Linux VM on macOS and Windows. Each lab deploys with a single containerlab command, and the lab-environment-setup lesson walks you through it once.",
+  },
+  {
+    q: "What is Containerlab, and are these real routers?",
+    a: "Containerlab is an open-source tool that boots real network-OS containers and wires them together with virtual links. NetworkNinja labs run genuine FRRouting routers, so you practice on the same vtysh CLI and real BGP that production networks use, not a simplified simulator.",
+  },
+  {
+    q: "Do I need prior networking experience?",
+    a: "Comfort with IP addressing and subnets is enough to begin. The BGP path starts from why BGP exists and builds up to configuring eBGP and iBGP, steering path selection, and writing routing policy.",
+  },
+  {
+    q: "Is this videos or multiple-choice quizzes?",
+    a: "Neither. You read tight, operator-grade theory, then boot real routers, break things, and verify your work with the same read-only checks a grader would run. The CLI you learn is the CLI production runs.",
+  },
+];
 
 export default function HomePage() {
   const path = loadPath("bgp-fundamentals");
   const stats = path ? pathStats(path) : null;
-  const flat = path ? flattenPath(path) : [];
   const moduleCount = path?.modules.length ?? 0;
+
+  // Every other path (e.g. OSPF) is advertised as "coming soon" until its units
+  // are authored. Driven by the manifest directory so new paths appear here
+  // automatically without touching this file.
+  const upcomingPaths = listPathIds()
+    .filter((id) => id !== "bgp-fundamentals")
+    .map((id) => loadPath(id))
+    .filter((p): p is NonNullable<typeof p> => p != null)
+    .map((p) => ({ path: p, stats: pathStats(p) }));
+
+  const orgId = `${SITE_URL}/#organization`;
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": orgId,
+        name: SITE_NAME,
+        url: SITE_URL,
+        logo: `${SITE_URL}/icon.svg`,
+        description:
+          "Hands-on networking education: learn by running real FRR routers with Containerlab.",
+      },
+      {
+        "@type": "WebSite",
+        "@id": `${SITE_URL}/#website`,
+        url: SITE_URL,
+        name: SITE_NAME,
+        publisher: { "@id": orgId },
+        description:
+          "Learn networking the way operators actually work: read the theory, then drop into real FRR labs you run yourself with Containerlab.",
+      },
+    ],
+  };
 
   return (
     <div className="mx-auto max-w-shell px-5 sm:px-8">
+      <JsonLd data={structuredData} />
       {/* ───────────────────────── Hero ───────────────────────── */}
       <section className="relative overflow-hidden pb-16 pt-16 sm:pt-24">
         {/* atmospheric blade sweep behind the headline */}
@@ -21,13 +85,13 @@ export default function HomePage() {
         />
 
         <div className="relative grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="animate-fade-up">
+          <div className="min-w-0 animate-fade-up">
             <span className="inline-flex items-center gap-2 rounded-full border border-ink-line bg-ink-raised/70 px-3 py-1 font-mono text-xs text-paper-muted">
               <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-blade" />
               hands-on networking · FRR + Containerlab
             </span>
 
-            <h1 className="mt-6 font-display text-[2.7rem] font-extrabold leading-[1.04] tracking-tight text-paper sm:text-6xl">
+            <h1 className="mt-6 font-display text-[2.1rem] font-extrabold leading-[1.05] tracking-tight text-paper break-words min-[400px]:text-[2.6rem] sm:text-6xl">
               Stop reading
               <br />
               about networks.
@@ -43,7 +107,7 @@ export default function HomePage() {
 
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-paper-muted">
               NetworkNinja pairs sharp, no-fluff theory with{" "}
-              <span className="text-paper">real labs you boot yourself</span> —
+              <span className="text-paper">real labs you boot yourself</span>:
               actual FRRouting routers wired up with Containerlab. Read it,
               break it, fix it. Master BGP the way operators actually work.
             </p>
@@ -56,19 +120,17 @@ export default function HomePage() {
                 Start the BGP path
                 <ArrowIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
-              {flat[0] && (
-                <Link
-                  href={`/units/${flat[0].id}`}
-                  className="inline-flex items-center gap-2 rounded-xl border border-ink-line bg-ink-raised px-5 py-3 font-medium text-paper transition-colors hover:bg-ink-glow"
-                >
-                  Jump into lesson one
-                </Link>
-              )}
+              <Link
+                href="#paths"
+                className="inline-flex items-center gap-2 rounded-xl border border-ink-line bg-ink-raised px-5 py-3 font-medium text-paper transition-colors hover:bg-ink-glow"
+              >
+                See Learning Paths
+              </Link>
             </div>
           </div>
 
           {/* terminal vignette */}
-          <div className="animate-fade-up [animation-delay:120ms]">
+          <div className="min-w-0 animate-fade-up [animation-delay:120ms]">
             <TerminalCard />
           </div>
         </div>
@@ -94,7 +156,7 @@ export default function HomePage() {
             n="01"
             icon={<BookIcon className="h-5 w-5" />}
             title="Read the theory"
-            body="Tight, operator-grade lessons. No 40-minute videos — just the mental model you need, with the protocol mechanics made concrete."
+            body="Tight, operator-grade lessons. No 40-minute videos, just the mental model you need, with the protocol mechanics made concrete."
           />
           <Step
             n="02"
@@ -106,14 +168,14 @@ export default function HomePage() {
             n="03"
             icon={<ArrowIcon className="h-5 w-5" />}
             title="Verify yourself"
-            body="Each lab ships a self-verify checklist of real read-only checks — the same ones a future auto-grader will run. Prove it's Established."
+            body="Each lab ships a self-verify checklist of real read-only checks, the same ones a future auto-grader will run. Prove it's Established."
           />
         </div>
       </section>
 
       {/* ───────────────────── Hero path card ───────────────────── */}
       {path && stats && (
-        <section className="pb-8">
+        <section id="paths" className="scroll-mt-20 pb-8">
           <Link
             href={`/paths/${path.id}`}
             className="group block overflow-hidden rounded-3xl border border-ink-line bg-ink-raised/60 shadow-panel transition-colors hover:border-blade/40"
@@ -150,6 +212,31 @@ export default function HomePage() {
           </Link>
         </section>
       )}
+
+      {/* ───────────────────── Upcoming paths ───────────────────── */}
+      {upcomingPaths.length > 0 && (
+        <section className="pb-8">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.2em] text-blade-dim">
+            More paths landing soon
+          </h2>
+          <div className="mt-8 grid gap-5 md:grid-cols-2">
+            {upcomingPaths.map(({ path: p, stats: s }) => (
+              <ComingSoonPathCard
+                key={p.id}
+                id={p.id}
+                title={p.title}
+                summary={p.summary}
+                moduleCount={p.modules.length}
+                plannedCount={s.published + s.planned}
+                networkOs={p.network_os}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ───────────────────────── FAQ ───────────────────────── */}
+      <Faq items={HOME_FAQ} heading="Frequently asked" className="pb-8" />
 
       {/* ───────────────────── Notify signup ───────────────────── */}
       <section className="pb-20">
@@ -228,16 +315,62 @@ function Step({
   );
 }
 
+function ComingSoonPathCard({
+  id,
+  title,
+  summary,
+  moduleCount,
+  plannedCount,
+  networkOs,
+}: {
+  id: string;
+  title: string;
+  summary: string;
+  moduleCount: number;
+  plannedCount: number;
+  networkOs?: string;
+}) {
+  return (
+    <Link
+      href={`/paths/${id}`}
+      className="group flex flex-col overflow-hidden rounded-2xl border border-dashed border-ink-line bg-ink-raised/40 p-6 transition-colors hover:border-blade/40 hover:bg-ink-raised/60"
+    >
+      <div className="flex items-center justify-between">
+        <span className="inline-flex items-center gap-2 rounded-full border border-ember/30 bg-ember/10 px-2.5 py-1 font-mono text-[0.68rem] uppercase tracking-[0.14em] text-ember">
+          Coming soon
+        </span>
+        <ArrowIcon className="h-4 w-4 text-paper-faint transition-all group-hover:translate-x-0.5 group-hover:text-blade" />
+      </div>
+      <h3 className="mt-4 font-display text-xl font-bold tracking-tight text-paper transition-colors group-hover:text-blade">
+        {title}
+      </h3>
+      <p className="mt-2 flex-1 text-sm leading-relaxed text-paper-muted">
+        {summary}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2 font-mono text-xs text-paper-faint">
+        <span className="rounded-full border border-ink-line px-2.5 py-1">
+          {moduleCount} modules · {plannedCount} units planned
+        </span>
+        {networkOs && (
+          <span className="rounded-full border border-ink-line px-2.5 py-1">
+            {networkOs}
+          </span>
+        )}
+      </div>
+    </Link>
+  );
+}
+
 /** A static, decorative terminal showing a BGP session coming up. */
 function TerminalCard() {
   return (
     <div className="overflow-hidden rounded-2xl border border-ink-line bg-ink-inset shadow-panel">
       <div className="flex items-center gap-2 border-b border-ink-line px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-sakura/60" />
-        <span className="h-2.5 w-2.5 rounded-full bg-ember/60" />
-        <span className="h-2.5 w-2.5 rounded-full bg-blade/60" />
-        <span className="ml-2 font-mono text-[0.7rem] text-paper-faint">
-          clab-bgp-ebgp-peering-r1 — vtysh
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-sakura/60" />
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-ember/60" />
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-blade/60" />
+        <span className="ml-2 truncate font-mono text-[0.7rem] text-paper-faint">
+          clab-bgp-ebgp-peering-r1: vtysh
         </span>
       </div>
       <pre className="!my-0 overflow-x-auto !rounded-none !border-0 !bg-transparent !px-4 !py-4 font-mono text-[0.78rem] leading-relaxed">

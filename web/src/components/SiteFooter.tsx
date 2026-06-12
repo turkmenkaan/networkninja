@@ -56,11 +56,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-2 border-t border-ink-line/60 pt-6 font-mono text-xs text-paper-faint sm:flex-row sm:items-center sm:justify-between">
-          <span>© {new Date().getFullYear()} NetworkNinja · Tier 1</span>
-          <span className="flex items-center gap-2">
-            <span className="inline-block h-1.5 w-1.5 animate-pulse-dot rounded-full bg-blade" />
-            content sourced from <code className="text-blade-dim">../content</code>
-          </span>
+          <span>© {new Date().getFullYear()} NetworkNinja</span>
         </div>
       </div>
     </footer>

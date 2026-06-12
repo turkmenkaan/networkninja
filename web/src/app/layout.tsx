@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Bricolage_Grotesque,
   Hanken_Grotesk,
@@ -8,6 +8,7 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SITE_URL } from "@/lib/site";
 
 /**
  * Type system:
@@ -37,19 +38,47 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://networkninja.local"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "NetworkNinja — Hands-on networking, master BGP",
     template: "%s · NetworkNinja",
   },
   description:
     "Learn networking the way operators actually work: read the theory, then drop into real FRR labs you run yourself with Containerlab. Starting with BGP.",
+  keywords: [
+    "BGP",
+    "OSPF",
+    "BGP lab",
+    "learn BGP",
+    "Containerlab",
+    "FRRouting",
+    "FRR BGP config",
+    "eBGP",
+    "iBGP",
+    "hands-on networking",
+    "network engineering",
+    "networking labs",
+  ],
+  applicationName: "NetworkNinja",
+  alternates: { canonical: "/" },
   openGraph: {
-    title: "NetworkNinja",
+    title: "NetworkNinja — Hands-on networking, master BGP",
     description:
       "Interactive networking education + Containerlab labs. Master BGP, hands-on.",
+    url: "/",
+    siteName: "NetworkNinja",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "NetworkNinja — Hands-on networking, master BGP",
+    description:
+      "Learn networking by running real FRR routers with Containerlab. Master BGP, hands-on.",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0c10",
 };
 
 export default function RootLayout({
@@ -64,7 +93,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen">
         <SiteHeader />
-        <main className="relative">{children}</main>
+        <main className="relative overflow-x-clip">{children}</main>
         <SiteFooter />
         <Analytics />
       </body>

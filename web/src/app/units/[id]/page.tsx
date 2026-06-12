@@ -20,6 +20,8 @@ import {
 import { MarkComplete } from "@/components/progress/MarkComplete";
 import { ObjectivesChecklist } from "@/components/progress/ObjectivesChecklist";
 import { LabRequirement } from "@/components/LabRequirement";
+import { JsonLd } from "@/components/JsonLd";
+import { SITE_URL, SITE_NAME } from "@/lib/site";
 
 export function generateStaticParams() {
   // Only build pages for units that actually exist (published manifests).
@@ -33,7 +35,11 @@ export function generateMetadata({
 }): Metadata {
   const meta = loadUnitMeta(params.id);
   if (!meta) return { title: "Unit not found" };
-  return { title: meta.title, description: meta.summary };
+  return {
+    title: meta.title,
+    description: meta.summary,
+    alternates: { canonical: `/units/${meta.id}` },
+  };
 }
 
 export default function UnitPage({ params }: { params: { id: string } }) {
@@ -53,8 +59,61 @@ export default function UnitPage({ params }: { params: { id: string } }) {
   const firstLabId = ctx?.flat.find((u) => u.meta.type === "lab")?.id;
   const isFirstLab = !!ctx && firstLabId === meta.id;
 
+  const unitUrl = `${SITE_URL}/units/${meta.id}`;
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "LearningResource",
+        name: meta.title,
+        description: meta.summary,
+        url: unitUrl,
+        learningResourceType: isLab ? "Lab exercise" : "Lesson",
+        educationalLevel: meta.difficulty,
+        inLanguage: "en",
+        provider: { "@type": "Organization", name: SITE_NAME, url: SITE_URL },
+        ...(meta.estimated_minutes > 0
+          ? { timeRequired: `PT${meta.estimated_minutes}M` }
+          : {}),
+        ...(meta.tags.length ? { keywords: meta.tags.join(", ") } : {}),
+        ...(ctx
+          ? {
+              isPartOf: {
+                "@type": "Course",
+                name: ctx.path.title,
+                url: `${SITE_URL}/paths/${ctx.path.id}`,
+              },
+            }
+          : {}),
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+          ...(ctx
+            ? [
+                {
+                  "@type": "ListItem",
+                  position: 2,
+                  name: ctx.path.title,
+                  item: `${SITE_URL}/paths/${ctx.path.id}`,
+                },
+              ]
+            : []),
+          {
+            "@type": "ListItem",
+            position: ctx ? 3 : 2,
+            name: meta.title,
+            item: unitUrl,
+          },
+        ],
+      },
+    ],
+  };
+
   return (
     <div className="mx-auto max-w-shell px-5 pb-8 pt-10 sm:px-8 sm:pt-14">
+      <JsonLd data={structuredData} />
       {/* breadcrumb */}
       <nav className="mb-6 font-mono text-xs text-paper-faint">
         <Link href="/" className="transition-colors hover:text-blade">

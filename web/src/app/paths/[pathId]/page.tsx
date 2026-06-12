@@ -17,6 +17,46 @@ import {
 } from "@/components/ui";
 import { PathProgress } from "@/components/progress/PathProgress";
 import { UnitCompleteDot } from "@/components/progress/UnitCompleteDot";
+import { JsonLd } from "@/components/JsonLd";
+import { Faq, type FaqItem } from "@/components/Faq";
+import { SITE_URL, SITE_NAME } from "@/lib/site";
+
+/**
+ * Per-path FAQ content. Keyed by path id so each path can have its own (and
+ * "coming soon" paths simply have none). Answers may use live stats.
+ */
+function pathFaqItems(
+  pathId: string,
+  moduleCount: number,
+  unitCount: number,
+  minutes: number,
+): FaqItem[] {
+  if (pathId === "bgp-fundamentals") {
+    return [
+      {
+        q: "What do I need to run the BGP labs?",
+        a: "Docker and Containerlab. Each lab downloads as a Containerlab topology plus the FRR router configs, and deploys with a single containerlab command. The first lab links a one-time environment-setup guide.",
+      },
+      {
+        q: "Do the labs use real BGP?",
+        a: "Yes. Every lab boots genuine FRRouting routers (frrouting/frr) running production BGP, and you drive them with the same vtysh CLI used in the field, not a simulator.",
+      },
+      {
+        q: "Does this cover both eBGP and iBGP?",
+        a: "Both, in dedicated modules. The path moves from eBGP fundamentals to iBGP (full mesh, loopback peering over an IGP, next-hop-self), then path attributes and best-path selection, and finally route filtering and policy.",
+      },
+      {
+        q: "How long is the BGP Fundamentals path?",
+        a: `${moduleCount} modules covering ${unitCount} hands-on lessons and labs, roughly ${minutes} minutes of content. It is self-paced, so you can work through a module at a time.`,
+      },
+      {
+        q: "Will this help with CCNP or other certs?",
+        a: "It is hands-on BGP practice that complements cert study such as CCNP or JNCIA. It is not a certification course, but the real configuration and troubleshooting skills transfer directly to the exams and to the job.",
+      },
+    ];
+  }
+  return [];
+}
 
 export function generateStaticParams() {
   return listPathIds().map((pathId) => ({ pathId }));
@@ -29,7 +69,11 @@ export function generateMetadata({
 }): Metadata {
   const path = loadPath(params.pathId);
   if (!path) return { title: "Path not found" };
-  return { title: path.title, description: path.summary };
+  return {
+    title: path.title,
+    description: path.summary,
+    alternates: { canonical: `/paths/${path.id}` },
+  };
 }
 
 export default function PathPage({ params }: { params: { pathId: string } }) {
@@ -39,9 +83,45 @@ export default function PathPage({ params }: { params: { pathId: string } }) {
   const flat = flattenPath(path);
   const stats = pathStats(path);
   const flatIds = flat.map((u) => u.id);
+  const faqItems = pathFaqItems(
+    path.id,
+    path.modules.length,
+    stats.published,
+    stats.totalMinutes,
+  );
+
+  const courseData = {
+    "@context": "https://schema.org",
+    "@type": "Course",
+    name: path.title,
+    description: path.summary,
+    url: `${SITE_URL}/paths/${path.id}`,
+    provider: {
+      "@type": "Organization",
+      name: SITE_NAME,
+      url: SITE_URL,
+    },
+    teaches: path.modules.map((m) => m.title),
+    offers: {
+      "@type": "Offer",
+      price: "0",
+      priceCurrency: "USD",
+      category: "Free",
+    },
+    ...(stats.totalMinutes > 0
+      ? {
+          hasCourseInstance: {
+            "@type": "CourseInstance",
+            courseMode: "online",
+            courseWorkload: `PT${stats.totalMinutes}M`,
+          },
+        }
+      : {}),
+  };
 
   return (
     <div className="mx-auto max-w-shell px-5 pb-12 pt-12 sm:px-8 sm:pt-16">
+      <JsonLd data={courseData} />
       {/* breadcrumb */}
       <nav className="mb-6 font-mono text-xs text-paper-faint">
         <Link href="/" className="transition-colors hover:text-blade">
@@ -93,6 +173,10 @@ export default function PathPage({ params }: { params: { pathId: string } }) {
           <ModuleSection key={mod.id} mod={mod} index={i} />
         ))}
       </div>
+
+      {faqItems.length > 0 && (
+        <Faq items={faqItems} heading="Path FAQ" className="mt-16" />
+      )}
     </div>
   );
 }
@@ -180,11 +264,20 @@ function UnitRow({ unit }: { unit: PathUnitRef }) {
   );
 }
 
+const ACRONYMS = new Set([
+  "BGP", "OSPF", "ISIS", "MPLS", "RPKI", "EVPN", "VXLAN", "IGP", "AS",
+  "DR", "BDR", "NSSA", "LSA", "MED", "VRF", "L3VPN", "ECMP", "BFD",
+]);
+
 function prettifyId(id: string): string {
   return id
-    .replace(/^bgp-/, "")
+    .replace(/^(bgp|ospf|isis|mpls|rpki)-/, "")
     .replace(/-/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+    .replace(/\b\w+/g, (w) => {
+      const upper = w.toUpperCase();
+      if (ACRONYMS.has(upper)) return upper;
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    });
 }
 
 function LockGlyph() {

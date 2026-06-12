@@ -22,14 +22,6 @@ export function SiteHeader() {
           >
             BGP Path
           </Link>
-          <a
-            href="https://containerlab.dev"
-            target="_blank"
-            rel="noreferrer"
-            className="rounded-lg px-3 py-1.5 text-paper-muted transition-colors hover:bg-ink-glow hover:text-paper"
-          >
-            Containerlab
-          </a>
           <Link
             href="/paths/bgp-fundamentals"
             className="ml-2 rounded-lg border border-blade/30 bg-blade/10 px-3.5 py-1.5 font-medium text-blade transition-all hover:border-blade/60 hover:bg-blade/15"
