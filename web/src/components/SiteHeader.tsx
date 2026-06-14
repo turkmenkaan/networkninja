@@ -19,13 +19,13 @@ export function SiteHeader() {
         <nav className="flex items-center gap-1 text-sm">
           <Link
             href="/paths/bgp-fundamentals"
-            className="rounded-lg px-3 py-1.5 text-paper-muted transition-colors hover:bg-ink-glow hover:text-paper"
+            className="hidden rounded-lg px-3 py-1.5 text-paper-muted transition-colors hover:bg-ink-glow hover:text-paper sm:inline-block"
           >
             BGP Path
           </Link>
           <Link
             href="/paths/bgp-fundamentals"
-            className="ml-2 rounded-lg border border-blade/30 bg-blade/10 px-3.5 py-1.5 font-medium text-blade transition-all hover:border-blade/60 hover:bg-blade/15"
+            className="ml-2 hidden rounded-lg border border-blade/30 bg-blade/10 px-3.5 py-1.5 font-medium text-blade transition-all hover:border-blade/60 hover:bg-blade/15 sm:inline-block"
           >
             Start training
           </Link>
