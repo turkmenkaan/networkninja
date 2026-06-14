@@ -8,9 +8,9 @@
  *   - rehype-pretty-code   → Shiki syntax highlighting for fenced code blocks
  *
  * A custom components map styles headings/links/tables/code to NetworkNinjas'
- * "midnight dojo / terminal" system. Fenced blocks with NO language (the ASCII
- * topology diagrams the curriculum embeds) are detected and rendered in a
- * dedicated `.nn-ascii` well instead of being run through the highlighter.
+ * "midnight dojo / terminal" system. Fenced blocks with NO language (the CLI
+ * command/output examples the curriculum embeds) are detected and rendered in
+ * a dedicated `.nn-cli` terminal well instead of being run through the highlighter.
  */
 import Link from "next/link";
 import { MDXRemote } from "next-mdx-remote/rsc";
@@ -136,14 +136,14 @@ const components: MDXComponents = {
     />
   ),
   // `pre` arrives already wrapped by rehype-pretty-code for highlighted blocks.
-  // Fenced blocks with NO language (the curriculum's ASCII topology diagrams)
-  // get tagged with the defaultLang ("plaintext"); we lift those out of the
-  // highlighter into a dedicated `.nn-ascii` well so the diagrams read cleanly.
+  // Fenced blocks with NO language (the curriculum's CLI command/output
+  // examples) get tagged with the defaultLang ("plaintext"); we lift those out
+  // of the highlighter into a dedicated `.nn-cli` terminal well.
   pre: (props: ComponentPropsWithoutRef<"pre">) => {
     const lang = (props as Record<string, unknown>)["data-language"];
     if (lang === "plaintext" || lang === "text" || lang === "ascii") {
       const text = childText(props.children).replace(/\n$/, "");
-      return <div className="nn-ascii">{text}</div>;
+      return <div className="nn-cli">{text}</div>;
     }
     return <pre {...props} />;
   },

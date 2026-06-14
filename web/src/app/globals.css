@@ -133,20 +133,21 @@ pre code [data-highlighted-line] {
 }
 
 /* ---------------------------------------------------------------------------
-   ASCII topology diagrams.
-   The content embeds these as fenced blocks with no language. We detect those
-   (Shiki gives them a plain look) — but to make the teaching diagrams sing we
-   add a dedicated class via MDX components for fenced `text`/plain blocks.
+   CLI / terminal wells.
+   The curriculum's command and output examples are fenced blocks with no
+   language. We lift those out of the syntax highlighter into a dedicated well
+   so the prompts and output read cleanly (topology diagrams are <ASTopology>
+   components, not fenced blocks).
 --------------------------------------------------------------------------- */
-.nn-ascii {
+.nn-cli {
   @apply my-6 overflow-x-auto rounded-xl border border-ink-line bg-ink-inset
     px-5 py-4 font-mono text-[0.8rem] leading-relaxed text-paper-muted;
   box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.02);
   white-space: pre;
   tab-size: 2;
 }
-.nn-ascii::before {
-  content: "topology";
+.nn-cli::before {
+  content: "CLI";
   @apply mb-3 block font-mono text-[0.65rem] uppercase tracking-[0.2em] text-blade-dim;
 }
 
