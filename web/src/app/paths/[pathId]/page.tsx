@@ -90,8 +90,7 @@ export default function PathPage({ params }: { params: { pathId: string } }) {
     stats.totalMinutes,
   );
 
-  const courseData = {
-    "@context": "https://schema.org",
+  const course = {
     "@type": "Course",
     name: path.title,
     description: path.summary,
@@ -117,11 +116,42 @@ export default function PathPage({ params }: { params: { pathId: string } }) {
           },
         }
       : {}),
+    // The path's live units, in order, as parts of the course.
+    ...(flat.length
+      ? {
+          hasPart: flat.map((u) => ({
+            "@type": "LearningResource",
+            name: u.meta.title,
+            url: `${SITE_URL}/units/${u.id}`,
+            learningResourceType:
+              u.meta.type === "lab" ? "Lab exercise" : "Lesson",
+          })),
+        }
+      : {}),
+  };
+
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      course,
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+          {
+            "@type": "ListItem",
+            position: 2,
+            name: path.title,
+            item: `${SITE_URL}/paths/${path.id}`,
+          },
+        ],
+      },
+    ],
   };
 
   return (
     <div className="mx-auto max-w-shell px-5 pb-12 pt-12 sm:px-8 sm:pt-16">
-      <JsonLd data={courseData} />
+      <JsonLd data={structuredData} />
       {/* breadcrumb */}
       <nav className="mb-6 font-mono text-xs text-paper-faint">
         <Link href="/" className="transition-colors hover:text-blade">
