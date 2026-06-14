@@ -7,6 +7,7 @@
  * section, a card, or the footer.
  */
 import { useState, type FormEvent } from "react";
+import posthog from "posthog-js";
 import { ArrowIcon } from "@/components/ui";
 
 type Status = "idle" | "submitting" | "success" | "exists" | "error";
@@ -19,6 +20,7 @@ export function NotifySignup({
   className?: string;
 }) {
   const [email, setEmail] = useState("");
+  const [honeypot, setHoneypot] = useState(""); // bot trap; real users never fill it
   const [status, setStatus] = useState<Status>("idle");
   const [message, setMessage] = useState("");
 
@@ -33,7 +35,7 @@ export function NotifySignup({
       const res = await fetch("/api/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, source }),
+        body: JSON.stringify({ email, source, website: honeypot }),
       });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -51,6 +53,7 @@ export function NotifySignup({
       } else {
         setStatus("success");
         setMessage("You're in. We'll ping you when new labs drop.");
+        posthog.capture("newsletter_subscribed", { source });
       }
     } catch {
       setStatus("error");
@@ -76,6 +79,23 @@ export function NotifySignup({
 
   return (
     <form onSubmit={onSubmit} className={className} noValidate>
+      {/* Honeypot: off-screen, hidden from users and assistive tech; bots that
+          autofill it get silently dropped server-side. */}
+      <div
+        aria-hidden="true"
+        className="absolute left-[-9999px] top-[-9999px] h-0 w-0 overflow-hidden"
+      >
+        <label htmlFor="nn-website">Leave this field empty</label>
+        <input
+          id="nn-website"
+          type="text"
+          name="website"
+          tabIndex={-1}
+          autoComplete="off"
+          value={honeypot}
+          onChange={(e) => setHoneypot(e.target.value)}
+        />
+      </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <label htmlFor="notify-email" className="sr-only">
           Email address

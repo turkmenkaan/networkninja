@@ -10,11 +10,25 @@
  */
 import { NextResponse } from "next/server";
 import { addSubscriber } from "@/lib/subscribers/store";
+import { rateLimit } from "@/lib/rate-limit";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 // Capturing input must run per-request, never be statically optimized.
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  // Throttle per IP before doing any work (blunts bot/DB spam floods).
+  const ip =
+    (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ||
+    "unknown";
+  const rl = rateLimit(`subscribe:${ip}`, 5, 60_000); // 5 / minute / IP
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { ok: false, error: "Too many requests. Please try again in a minute." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } },
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -25,7 +39,20 @@ export async function POST(request: Request) {
     );
   }
 
-  const record = body as { email?: unknown; source?: unknown };
+  const record = body as {
+    email?: unknown;
+    source?: unknown;
+    website?: unknown;
+  };
+
+  // Honeypot: a hidden field real users never see. If it's filled, a bot did
+  // it — return a fake success (so the bot learns nothing) and write nothing.
+  const honeypot =
+    typeof record.website === "string" ? record.website.trim() : "";
+  if (honeypot) {
+    return NextResponse.json({ ok: true, alreadySubscribed: false });
+  }
+
   const email = typeof record.email === "string" ? record.email : "";
   const source =
     typeof record.source === "string" && record.source ? record.source : "site";
@@ -44,6 +71,17 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  const posthog = getPostHogClient();
+  posthog.capture({
+    distinctId: email,
+    event: "newsletter_signup_submitted",
+    properties: {
+      source,
+      already_subscribed: result.status === "exists",
+    },
+  });
+  await posthog.shutdown();
 
   return NextResponse.json({
     ok: true,
