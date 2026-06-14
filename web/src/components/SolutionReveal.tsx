@@ -7,6 +7,7 @@
  * proper aria wiring.
  */
 import { useState, type ReactNode } from "react";
+import posthog from "posthog-js";
 import { ArrowIcon } from "@/components/ui";
 
 export function SolutionReveal({ children }: { children: ReactNode }) {
@@ -16,7 +17,11 @@ export function SolutionReveal({ children }: { children: ReactNode }) {
     <section className="not-prose my-10 overflow-hidden rounded-2xl border border-sakura/25 bg-sakura/[0.04]">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) posthog.capture("solution_revealed");
+        }}
         aria-expanded={open}
         aria-controls="solution-body"
         className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-sakura/[0.06]"

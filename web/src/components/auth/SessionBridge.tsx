@@ -7,6 +7,7 @@
  * unconfigured.
  */
 import { useEffect } from "react";
+import posthog from "posthog-js";
 import { getBrowserClient } from "@/lib/supabase/client";
 import { progressStore } from "@/lib/progress/store";
 
@@ -23,8 +24,16 @@ export function SessionBridge() {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         progressStore.setUser(null);
+        posthog.reset();
       } else if (event === "INITIAL_SESSION" || event === "SIGNED_IN") {
-        progressStore.setUser(session?.user?.id ?? null);
+        const userId = session?.user?.id ?? null;
+        progressStore.setUser(userId);
+        if (userId) {
+          posthog.identify(userId, {
+            email: session?.user?.email,
+            provider: session?.user?.app_metadata?.provider,
+          });
+        }
       }
     });
 

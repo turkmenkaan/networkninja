@@ -15,11 +15,11 @@ import {
   TypeBadge,
   MinutesBadge,
   ArrowIcon,
-  DownloadIcon,
 } from "@/components/ui";
 import { MarkComplete } from "@/components/progress/MarkComplete";
 import { ObjectivesChecklist } from "@/components/progress/ObjectivesChecklist";
 import { LabRequirement } from "@/components/LabRequirement";
+import { LabDownloadButton } from "@/components/LabDownloadButton";
 import { JsonLd } from "@/components/JsonLd";
 import { SITE_URL, SITE_NAME } from "@/lib/site";
 
@@ -172,14 +172,7 @@ export default function UnitPage({ params }: { params: { id: string } }) {
                   .
                 </p>
               </div>
-              <a
-                href={`/api/units/${meta.id}/lab`}
-                download={`${meta.id}.zip`}
-                className="inline-flex items-center gap-2 rounded-xl border border-blade/40 bg-blade/15 px-4 py-2.5 text-sm font-medium text-blade transition-all hover:border-blade/70 hover:bg-blade/20"
-              >
-                <DownloadIcon className="h-4 w-4" />
-                Download lab (.zip)
-              </a>
+              <LabDownloadButton unitId={meta.id} />
             </div>
           )}
 

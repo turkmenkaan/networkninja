@@ -11,6 +11,7 @@
  * not shown to the learner.
  */
 import { useState } from "react";
+import posthog from "posthog-js";
 import type { Objective } from "@/lib/content/types";
 import { useProgress } from "@/lib/progress/useProgress";
 import { objectiveChecked } from "@/lib/progress/store";
@@ -52,7 +53,21 @@ export function ObjectivesChecklist({
             unitId={unitId}
             objective={o}
             checked={objectiveChecked(state, unitId, o.id)}
-            onToggle={(v) => toggleObjective(unitId, o.id, v)}
+            onToggle={(v) => {
+            toggleObjective(unitId, o.id, v);
+            posthog.capture(
+              v ? "lab_objective_checked" : "lab_objective_unchecked",
+              {
+                unit_id: unitId,
+                objective_id: o.id,
+                objectives_total: objectives.length,
+                objectives_done:
+                  objectives.filter((ob) =>
+                    objectiveChecked(state, unitId, ob.id),
+                  ).length + (v ? 1 : -1),
+              },
+            );
+          }}
           />
         ))}
       </ul>

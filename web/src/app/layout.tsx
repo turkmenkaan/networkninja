@@ -9,6 +9,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SessionBridge } from "@/components/auth/SessionBridge";
+import { PostHogProvider } from "@/components/PostHogProvider";
 import { SITE_URL } from "@/lib/site";
 
 /**
@@ -93,11 +94,13 @@ export default function RootLayout({
       className={`${display.variable} ${body.variable} ${mono.variable}`}
     >
       <body className="min-h-screen">
-        <SessionBridge />
-        <SiteHeader />
-        <main className="relative overflow-x-clip">{children}</main>
-        <SiteFooter />
-        <Analytics />
+        <PostHogProvider>
+          <SessionBridge />
+          <SiteHeader />
+          <main className="relative overflow-x-clip">{children}</main>
+          <SiteFooter />
+          <Analytics />
+        </PostHogProvider>
       </body>
     </html>
   );

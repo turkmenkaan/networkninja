@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import posthog from "posthog-js";
 import { getBrowserClient } from "@/lib/supabase/client";
 import { GithubIcon } from "@/components/ui";
 
@@ -35,6 +36,7 @@ export function AuthButton() {
   }, []);
 
   const signIn = () => {
+    posthog.capture("sign_in_clicked", { provider: "github" });
     const supabase = getBrowserClient();
     const next = window.location.pathname + window.location.search;
     void supabase.auth.signInWithOAuth({
@@ -46,6 +48,7 @@ export function AuthButton() {
   };
 
   const signOut = () => {
+    posthog.capture("sign_out_clicked");
     void getBrowserClient().auth.signOut();
   };
 

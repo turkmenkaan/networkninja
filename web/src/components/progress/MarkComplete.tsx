@@ -5,6 +5,7 @@
  * progress store. Hydration-safe: renders a stable disabled shell on the server
  * snapshot (always incomplete) and lights up once the store hydrates.
  */
+import posthog from "posthog-js";
 import { useProgress } from "@/lib/progress/useProgress";
 import { isUnitComplete } from "@/lib/progress/store";
 import { CheckIcon } from "@/components/ui";
@@ -16,7 +17,13 @@ export function MarkComplete({ unitId }: { unitId: string }) {
   return (
     <button
       type="button"
-      onClick={() => setUnitComplete(unitId, !done)}
+      onClick={() => {
+        const next = !done;
+        setUnitComplete(unitId, next);
+        posthog.capture(next ? "unit_completed" : "unit_uncompleted", {
+          unit_id: unitId,
+        });
+      }}
       aria-pressed={done}
       className={`group inline-flex items-center gap-2.5 rounded-xl border px-4 py-2.5 text-sm font-medium transition-all ${
         done

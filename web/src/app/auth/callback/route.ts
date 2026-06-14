@@ -4,6 +4,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/ssr-server";
+import { getPostHogClient } from "@/lib/posthog-server";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -26,8 +27,21 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const supabase = createSupabaseServerClient();
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const userId = data.user?.id;
+      if (userId) {
+        const posthog = getPostHogClient();
+        posthog.capture({
+          distinctId: userId,
+          event: "user_signed_in",
+          properties: {
+            provider: data.user?.app_metadata?.provider,
+            $set: { email: data.user?.email },
+          },
+        });
+        await posthog.shutdown();
+      }
       return NextResponse.redirect(`${base}${next}`);
     }
   }
