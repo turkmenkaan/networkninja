@@ -22,3 +22,7 @@ npm-debug.log*
 
 # lighthouse / audit reports (local artifacts)
 *.report.html
+
+# build info + one-off setup reports
+*.tsbuildinfo
+web/posthog-setup-report.md
