@@ -167,6 +167,33 @@ export function CheckIcon({ className = "" }: IconProps) {
   );
 }
 
+export function ExpandIcon({ className = "" }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M6 2.5H3.5A1 1 0 0 0 2.5 3.5V6 M10 2.5H12.5A1 1 0 0 1 13.5 3.5V6 M13.5 10V12.5A1 1 0 0 1 12.5 13.5H10 M2.5 10V12.5A1 1 0 0 0 3.5 13.5H6"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function CloseIcon({ className = "" }: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden="true">
+      <path
+        d="M4 4 12 12 M12 4 4 12"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function GithubIcon({ className = "" }: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" className={className} aria-hidden="true">

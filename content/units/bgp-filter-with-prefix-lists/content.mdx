@@ -14,8 +14,8 @@ The customer's real, assigned allocations are `203.0.113.0/24` and `198.51.100.0
   nodeShape="router"
   eyebrow="Lab topology"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "customer: 203.0.113.0/24, 198.51.100.0/24, 10.0.0.0/8", col: 0, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "your filter", col: 1, row: 0 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: ["customer", "lo 1.1.1.1/32", "eth1 10.0.12.1/24"], col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: ["your filter", "lo 2.2.2.2/32", "eth1 10.0.12.2/24"], col: 1, row: 0 },
   ]}
   links={[{ from: "r1", to: "r2" }]}
   legend="eBGP over 10.0.12.0/24 (r1 .1, r2 .2, on eth1)"

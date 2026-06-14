@@ -18,6 +18,7 @@
  *   />
  */
 import type { ReactNode } from "react";
+import { ZoomableFigure } from "./ZoomableFigure";
 
 export interface ASNode {
   id: string;
@@ -29,8 +30,16 @@ export interface ASNode {
   row: number;
   /** Secondary styling for edge/customer nodes. */
   muted?: boolean;
-  /** Small faint line under the node (e.g. a loopback or address). */
-  sublabel?: string;
+  /**
+   * Small faint line(s) under the node, e.g. interface and loopback addresses.
+   * Pass an array to stack multiple lines (interfaces first, loopback last).
+   */
+  sublabel?: string | string[];
+}
+
+/** Normalize a sublabel (string | string[] | undefined) to a list of lines. */
+function toLines(s?: string | string[]): string[] {
+  return s == null ? [] : Array.isArray(s) ? s : [s];
 }
 
 export interface ASLink {
@@ -139,8 +148,12 @@ export function ASTopology({
   const cols = Math.max(...nodes.map((n) => n.col)) + 1;
   const rows = Math.max(...nodes.map((n) => n.row)) + 1;
   const legendH = legend ? 28 : 6;
+  // Extra bottom room for nodes with several stacked sublabel lines (loopback +
+  // interfaces) so the last row's labels never clip the frame or the legend.
+  const maxSubLines = Math.max(1, ...nodes.map((n) => toLines(n.sublabel).length));
   const width = MARGIN_X * 2 + cols * CELL_W;
-  const height = MARGIN_Y * 2 + rows * CELL_H + legendH;
+  const height =
+    MARGIN_Y * 2 + rows * CELL_H + legendH + Math.max(0, maxSubLines - 1) * 12;
   const byId = new Map(nodes.map((n) => [n.id, n]));
 
   const label =
@@ -150,7 +163,7 @@ export function ASTopology({
       .join(", ")}, connected by links.`;
 
   return (
-    <figure className="my-7 rounded-xl border border-ink-line bg-ink-inset px-4 pb-3.5 pt-5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.02)]">
+    <ZoomableFigure label={eyebrow ?? "topology"}>
       {eyebrow ? (
         <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-blade-dim">
           {eyebrow}
@@ -230,18 +243,19 @@ export function ASTopology({
                     {n.asn}
                   </text>
                 ) : null}
-                {n.sublabel ? (
+                {toLines(n.sublabel).map((line, i) => (
                   <text
+                    key={i}
                     x={g.cx}
-                    y={g.bottom + (n.asn ? 47 : 33)}
+                    y={g.bottom + (n.asn ? 47 : 33) + i * 12}
                     textAnchor="middle"
                     fontFamily="var(--font-mono)"
                     fontSize={9}
                     fill="#5d6675"
                   >
-                    {n.sublabel}
+                    {line}
                   </text>
-                ) : null}
+                ))}
               </g>
             );
           }
@@ -281,18 +295,19 @@ export function ASTopology({
               >
                 {n.name}
               </text>
-              {n.sublabel ? (
+              {toLines(n.sublabel).map((line, i) => (
                 <text
+                  key={i}
                   x={g.cx}
-                  y={g.cardY + (n.asn ? 56 : 50)}
+                  y={g.cardY + (n.asn ? 56 : 50) + i * 11}
                   textAnchor="middle"
                   fontFamily="var(--font-mono)"
                   fontSize={9}
                   fill="#5d6675"
                 >
-                  {n.sublabel}
+                  {line}
                 </text>
-              ) : null}
+              ))}
             </g>
           );
         })}
@@ -323,6 +338,6 @@ export function ASTopology({
           {caption}
         </figcaption>
       ) : null}
-    </figure>
+    </ZoomableFigure>
   );
 }

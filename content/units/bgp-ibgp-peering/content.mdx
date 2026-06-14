@@ -10,8 +10,8 @@ By the end of this lab you'll have a working **iBGP** session between `r1` and `
   nodeShape="router"
   eyebrow="Lab topology"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65001", sublabel: "lo 2.2.2.2/32", col: 1, row: 0 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: ["lo 1.1.1.1/32", "eth1 10.0.12.1/24"], col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65001", sublabel: ["lo 2.2.2.2/32", "eth1 10.0.12.2/24"], col: 1, row: 0 },
   ]}
   links={[{ from: "r1", to: "r2" }]}
   legend="iBGP over loopbacks, OSPF underlay on 10.0.12.0/24 (r1 .1, r2 .2, on eth1)"

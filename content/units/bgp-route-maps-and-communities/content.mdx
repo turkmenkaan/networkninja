@@ -16,9 +16,9 @@ You are `r1` (AS 65001). You already originate two prefixes and already peer wit
   nodeShape="router"
   eyebrow="Lab topology"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "originates + tags", col: 0, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "transit, acts on tag", col: 1, row: 0 },
-    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "far observer", col: 2, row: 0 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: ["originates + tags", "lo 1.1.1.1/32", "eth1 10.0.12.1/24"], col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: ["transit, acts on tag", "lo 2.2.2.2/32", "eth1 10.0.12.2/24", "eth2 10.0.23.2/24"], col: 1, row: 0 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: ["far observer", "lo 3.3.3.3/32", "eth1 10.0.23.3/24"], col: 2, row: 0 },
   ]}
   links={[
     { from: "r1", to: "r2" },

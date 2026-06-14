@@ -10,10 +10,10 @@ Here is the catch that trips up every new operator: **outbound and inbound are t
   nodeShape="router"
   eyebrow="Your AS, dual-homed to a primary and a backup"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "your edge - lo 1.1.1.1/32", col: 1, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "upstream A - PRIMARY", col: 0, row: 1 },
-    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "upstream B - BACKUP", col: 2, row: 1 },
-    { id: "r4", name: "r4", asn: "AS 65004", sublabel: "internet - originates 100.64.0.0/24", col: 1, row: 2 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: ["your edge", "lo 1.1.1.1/32", "eth1 10.0.12.1/24", "eth2 10.0.13.1/24"], col: 1, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: ["upstream A - PRIMARY", "lo 2.2.2.2/32", "eth1 10.0.12.2/24", "eth2 10.0.24.2/24"], col: 0, row: 1 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: ["upstream B - BACKUP", "lo 3.3.3.3/32", "eth1 10.0.13.3/24", "eth2 10.0.34.3/24"], col: 2, row: 1 },
+    { id: "r4", name: "r4", asn: "AS 65004", sublabel: ["internet", "lo 4.4.4.4/32", "eth1 10.0.24.4/24", "eth2 10.0.34.4/24"], col: 1, row: 2 },
   ]}
   links={[
     { from: "r1", to: "r2", label: "10.0.12.0/24" },

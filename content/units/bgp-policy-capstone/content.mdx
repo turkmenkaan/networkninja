@@ -10,9 +10,9 @@ Everything you learned in this module comes together here. You will **filter** w
   nodeShape="router"
   eyebrow="Your ISP, between a customer and an upstream"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "customer - leaks 192.168.0.0/16", col: 0, row: 1 },
-    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "YOU - lo 2.2.2.2/32", col: 1, row: 1 },
-    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "upstream - originates 8.8.8.0/24", col: 2, row: 1 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: ["customer - leaks 192.168.0.0/16", "lo 1.1.1.1/32", "eth1 10.0.12.1/24"], col: 0, row: 1 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: ["YOU", "lo 2.2.2.2/32", "eth1 10.0.12.2/24", "eth2 10.0.23.2/24"], col: 1, row: 1 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: ["upstream - originates 8.8.8.0/24", "lo 3.3.3.3/32", "eth1 10.0.23.3/24"], col: 2, row: 1 },
   ]}
   links={[
     { from: "r1", to: "r2", label: "10.0.12.0/24" },

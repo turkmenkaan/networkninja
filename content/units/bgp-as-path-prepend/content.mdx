@@ -10,10 +10,10 @@ Suppose you want inbound traffic to prefer `r2`. You cannot reach into `r4` and 
   nodeShape="router"
   eyebrow="Lab topology"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "advertises 1.1.1.1/32", col: 1, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "upstream A", col: 0, row: 1 },
-    { id: "r3", name: "r3", asn: "AS 65003", sublabel: "upstream B", col: 2, row: 1 },
-    { id: "r4", name: "r4", asn: "AS 65004", sublabel: "far observer", col: 1, row: 2 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: ["lo 1.1.1.1/32", "eth1 10.0.12.1/24", "eth2 10.0.13.1/24"], col: 1, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: ["upstream A", "lo 2.2.2.2/32", "eth1 10.0.12.2/24", "eth2 10.0.24.2/24"], col: 0, row: 1 },
+    { id: "r3", name: "r3", asn: "AS 65003", sublabel: ["upstream B", "lo 3.3.3.3/32", "eth1 10.0.13.3/24", "eth2 10.0.34.3/24"], col: 2, row: 1 },
+    { id: "r4", name: "r4", asn: "AS 65004", sublabel: ["far observer", "lo 4.4.4.4/32", "eth1 10.0.24.4/24", "eth2 10.0.34.4/24"], col: 1, row: 2 },
   ]}
   links={[
     { from: "r1", to: "r2" },

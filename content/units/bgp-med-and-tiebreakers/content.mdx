@@ -12,8 +12,8 @@ In this lab r1 already peers with r2 over both links and advertises `1.1.1.1/32`
   nodeShape="router"
   eyebrow="Lab topology"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "lo 1.1.1.1/32", col: 0, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65002", sublabel: "lo 2.2.2.2/32", col: 1, row: 0 },
+    { id: "r1", name: "r1", asn: "AS 65001", sublabel: ["lo 1.1.1.1/32", "eth1 10.0.12.1/24", "eth2 10.0.34.1/24"], col: 0, row: 0 },
+    { id: "r2", name: "r2", asn: "AS 65002", sublabel: ["lo 2.2.2.2/32", "eth1 10.0.12.2/24", "eth2 10.0.34.2/24"], col: 1, row: 0 },
   ]}
   links={[
     { from: "r1", to: "r2", label: "link1 - 10.0.12.0/24" },
