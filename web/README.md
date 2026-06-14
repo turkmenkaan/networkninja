@@ -1,6 +1,6 @@
-# NetworkNinja — web (Tier 1)
+# NetworkNinjas — web (Tier 1)
 
-The Next.js (App Router) frontend for **NetworkNinja**: a hands-on
+The Next.js (App Router) frontend for **NetworkNinjas**: a hands-on
 networking-education platform. It renders the content library and tracks learner
 progress. Read the theory, then boot real FRRouting labs with Containerlab.
 

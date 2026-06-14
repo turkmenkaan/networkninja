@@ -11,7 +11,7 @@ export function SiteHeader() {
         >
           <Logo className="h-7 w-7 text-blade transition-transform duration-500 group-hover:rotate-[135deg]" />
           <span>
-            Network<span className="text-blade">Ninja</span>
+            Network<span className="text-blade">Ninjas</span>
           </span>
         </Link>
 

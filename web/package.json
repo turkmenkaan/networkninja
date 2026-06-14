@@ -2,7 +2,7 @@
   "name": "networkninja-web",
   "version": "0.1.0",
   "private": true,
-  "description": "NetworkNinja Tier-1 web app — renders the content library and tracks learner progress.",
+  "description": "NetworkNinjas Tier-1 web app — renders the content library and tracks learner progress.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

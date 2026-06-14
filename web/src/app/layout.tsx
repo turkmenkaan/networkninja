@@ -40,8 +40,8 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "NetworkNinja — Hands-on networking, master BGP",
-    template: "%s · NetworkNinja",
+    default: "NetworkNinjas — Hands-on networking, master BGP",
+    template: "%s · NetworkNinjas",
   },
   description:
     "Learn networking the way operators actually work: read the theory, then drop into real FRR labs you run yourself with Containerlab. Starting with BGP.",
@@ -59,19 +59,19 @@ export const metadata: Metadata = {
     "network engineering",
     "networking labs",
   ],
-  applicationName: "NetworkNinja",
+  applicationName: "NetworkNinjas",
   alternates: { canonical: "/" },
   openGraph: {
-    title: "NetworkNinja — Hands-on networking, master BGP",
+    title: "NetworkNinjas — Hands-on networking, master BGP",
     description:
       "Interactive networking education + Containerlab labs. Master BGP, hands-on.",
     url: "/",
-    siteName: "NetworkNinja",
+    siteName: "NetworkNinjas",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "NetworkNinja — Hands-on networking, master BGP",
+    title: "NetworkNinjas — Hands-on networking, master BGP",
     description:
       "Learn networking by running real FRR routers with Containerlab. Master BGP, hands-on.",
   },

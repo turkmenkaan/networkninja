@@ -1,6 +1,6 @@
-# NetworkNinja - Organic Marketing Strategy
+# NetworkNinjas - Organic Marketing Strategy
 
-Planning doc. Channel-by-channel playbook for growing NetworkNinja organically
+Planning doc. Channel-by-channel playbook for growing NetworkNinjas organically
 (no paid ads), tuned to the product: a free, hands-on platform where you learn
 BGP by running **real FRR routers** locally with Containerlab.
 
@@ -82,10 +82,10 @@ PH is a launch *event*, not a steady channel. Its audience skews makers/tech gen
 
 ## 5. And more (other organic channels)
 
-- **Hacker News - "Show HN":** "Show HN: NetworkNinja - learn BGP by running real routers locally." HN loves technical, free, hands-on tools. High risk (HN is blunt), high reward (big spike + durable backlink). Save for a polished milestone; be present to answer every comment, technical and critical.
+- **Hacker News - "Show HN":** "Show HN: NetworkNinjas - learn BGP by running real routers locally." HN loves technical, free, hands-on tools. High risk (HN is blunt), high reward (big spike + durable backlink). Save for a polished milestone; be present to answer every comment, technical and critical.
 - **YouTube + short-form (under-rated for tutorials):** YouTube is the #2 search engine. A few high-quality lab walkthroughs ("Bring up your first BGP session in 5 minutes") rank for years and double as onboarding. Shorts/Reels of diagrams and concepts for reach.
 - **Communities (be a member, not a billboard):** Containerlab Discord, Network to Code Slack, r/networking Discord, homelab Discord, PacketPushers community. Share when relevant.
-- **Containerlab + FRR ecosystems:** NetworkNinja is a natural "learning resource built on Containerlab/FRR." Get featured in their community/showcase pages and docs links - aligned audience, strong backlinks.
+- **Containerlab + FRR ecosystems:** NetworkNinjas is a natural "learning resource built on Containerlab/FRR." Get featured in their community/showcase pages and docs links - aligned audience, strong backlinks.
 - **Newsletters:** pitch ipSpace, PacketPushers, and dev-tool newsletters (Console, etc.) for a mention.
 - **Open-source angle (decide deliberately):** if the content/labs repo goes public with a clear license, it can earn GitHub stars, contributions, awesome-list inclusion, and goodwill - and the labs are independently useful. Weigh against the future paid model.
 - **Q&A SEO:** answer BGP questions on the Network Engineering StackExchange and Quora, linking resources tastefully (also helps SEO via referral + authority).

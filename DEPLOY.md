@@ -1,4 +1,4 @@
-# Deploying NetworkNinja to Vercel
+# Deploying NetworkNinjas to Vercel
 
 The `web/` app is a Next.js 14 site that reads the curriculum from `../content` at **build time** and uses Supabase (Postgres) for the email signup. This guide gets it live on Vercel.
 
@@ -26,7 +26,7 @@ This isn't a git repo yet. From the repo root (`networkninja/`):
 ```bash
 git init
 git add .
-git commit -m "NetworkNinja: BGP Foundations content + web app + Supabase subscribers"
+git commit -m "NetworkNinjas: BGP Foundations content + web app + Supabase subscribers"
 git branch -M main
 git remote add origin git@github.com:<you>/networkninja.git   # create the repo on GitHub first
 git push -u origin main
@@ -58,8 +58,31 @@ In the import screen (or Project → Settings → Environment Variables), add fo
    - Submit the **email signup** with a test address → success state.
 3. Confirm the row landed in Supabase (Table Editor → `subscribers`), then **delete the test row** so your real list stays clean.
 
+## Custom domain (networkninjas.app, on GoDaddy)
+The production domain is **networkninjas.app**, with the **apex** as primary and `www` redirecting to it.
+
+1. **Vercel** → Project → Settings → **Domains** → add both `networkninjas.app` and `www.networkninjas.app`. Set `networkninjas.app` as **Primary** and accept the offer to redirect `www` → apex.
+2. **GoDaddy** → the domain → **DNS → DNS Records**. Keep GoDaddy as the DNS host (do not change nameservers) and add:
+
+   | Type | Name | Value | TTL |
+   |------|------|-------|-----|
+   | `A` | `@` | `76.76.21.21` | 1 hour |
+   | `CNAME` | `www` | `cname.vercel-dns.com` | 1 hour |
+
+   - **Delete GoDaddy's default parked `@` A record** (points at their parking IP) so it doesn't conflict.
+   - **Do not** use GoDaddy "Domain Forwarding" — use the records above.
+   - If Vercel's panel shows different values or a TXT verification record, follow Vercel.
+3. **HTTPS:** `.app` is an HSTS-preloaded TLD (HTTPS-only, no HTTP fallback). Vercel auto-issues the SSL cert once DNS verifies; the site won't load until that cert is valid (a few minutes after DNS resolves).
+4. **Set the canonical URL env var** so SEO/canonical/OG/sitemap use the real domain. Project → Settings → Environment Variables → add for **Production**:
+
+   | Name | Value |
+   |------|-------|
+   | `NEXT_PUBLIC_SITE_URL` | `https://networkninjas.app` |
+
+   Then **redeploy** (env changes need a fresh build). The code reads this via `web/src/lib/site.ts` (which also defaults to `https://networkninjas.app` if unset). Verify `https://networkninjas.app/sitemap.xml` and `/robots.txt` show the real domain.
+5. **Supabase (later, when auth ships):** set Authentication → URL Configuration → Site URL to `https://networkninjas.app` and add it to the redirect allowlist. Not needed yet (auth is deferred).
+
 ## After it's live
-- **Custom domain** (optional): Project → Settings → Domains → add your domain, follow the DNS instructions.
 - **Auto-deploys:** every push to `main` redeploys; PRs get preview URLs. Re-pushing content changes re-runs the build (content is read at build, so new lessons need a redeploy to appear).
 - **Rollback:** Vercel → Deployments → pick a previous one → "Promote to Production."
 

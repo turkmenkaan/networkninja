@@ -1,5 +1,5 @@
 /**
- * NetworkNinja mark: a shuriken whose points double as network nodes, wired
+ * NetworkNinjas mark: a shuriken whose points double as network nodes, wired
  * together — "ninja" meets "network graph". Pure SVG, currentColor-driven.
  */
 export function Logo({ className = "" }: { className?: string }) {

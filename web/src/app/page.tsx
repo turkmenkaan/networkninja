@@ -13,7 +13,7 @@ import { SITE_URL, SITE_NAME } from "@/lib/site";
 
 const HOME_FAQ = [
   {
-    q: "Is NetworkNinja free?",
+    q: "Is NetworkNinjas free?",
     a: "Yes. Every lesson and every lab is free right now. The labs run on your own machine with Containerlab, so there is nothing to pay for and no account required to start.",
   },
   {
@@ -22,7 +22,7 @@ const HOME_FAQ = [
   },
   {
     q: "What is Containerlab, and are these real routers?",
-    a: "Containerlab is an open-source tool that boots real network-OS containers and wires them together with virtual links. NetworkNinja labs run genuine FRRouting routers, so you practice on the same vtysh CLI and real BGP that production networks use, not a simplified simulator.",
+    a: "Containerlab is an open-source tool that boots real network-OS containers and wires them together with virtual links. NetworkNinjas labs run genuine FRRouting routers, so you practice on the same vtysh CLI and real BGP that production networks use, not a simplified simulator.",
   },
   {
     q: "Do I need prior networking experience?",
@@ -106,7 +106,7 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-paper-muted">
-              NetworkNinja pairs sharp, no-fluff theory with{" "}
+              NetworkNinjas pairs sharp, no-fluff theory with{" "}
               <span className="text-paper">real labs you boot yourself</span>:
               actual FRRouting routers wired up with Containerlab. Read it,
               break it, fix it. Master BGP the way operators actually work.

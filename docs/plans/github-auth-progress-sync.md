@@ -10,7 +10,7 @@
 
 ## Context
 
-NetworkNinja's web app (`web/`, Next.js 14 App Router) has no accounts: learner progress lives in `localStorage` (per-browser, anonymous) behind a backend-agnostic `progressStore`, and Supabase is used only for the email subscriber list (a server-only **secret** key in `web/src/lib/supabase/server.ts`). An earlier feasibility study chose **GitHub OAuth** + **offline-first progress sync** as the next phase; this is that implementation plan.
+NetworkNinjas' web app (`web/`, Next.js 14 App Router) has no accounts: learner progress lives in `localStorage` (per-browser, anonymous) behind a backend-agnostic `progressStore`, and Supabase is used only for the email subscriber list (a server-only **secret** key in `web/src/lib/supabase/server.ts`). An earlier feasibility study chose **GitHub OAuth** + **offline-first progress sync** as the next phase; this is that implementation plan.
 
 Goal: let users sign in with GitHub so progress follows them across devices, while keeping anonymous browsing fully working and pages statically rendered.
 

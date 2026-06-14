@@ -7,7 +7,7 @@
  *   - rehype-slug          → stable heading ids (anchor targets)
  *   - rehype-pretty-code   → Shiki syntax highlighting for fenced code blocks
  *
- * A custom components map styles headings/links/tables/code to NetworkNinja's
+ * A custom components map styles headings/links/tables/code to NetworkNinjas'
  * "midnight dojo / terminal" system. Fenced blocks with NO language (the ASCII
  * topology diagrams the curriculum embeds) are detected and rendered in a
  * dedicated `.nn-ascii` well instead of being run through the highlighter.

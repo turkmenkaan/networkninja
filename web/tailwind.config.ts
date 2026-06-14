@@ -2,7 +2,7 @@ import type { Config } from "tailwindcss";
 import typography from "@tailwindcss/typography";
 
 /**
- * NetworkNinja design tokens.
+ * NetworkNinjas design tokens.
  *
  * Aesthetic: "midnight dojo / terminal" — a deep ink canvas, warm paper text,
  * a single sharp katana-steel accent, and a sakura warm accent used sparingly.

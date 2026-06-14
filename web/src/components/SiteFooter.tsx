@@ -9,7 +9,7 @@ export function SiteFooter() {
           <div className="max-w-sm">
             <div className="flex items-center gap-2 font-display font-bold">
               <Logo className="h-6 w-6 text-blade" />
-              Network<span className="-ml-1.5 text-blade">Ninja</span>
+              Network<span className="-ml-1.5 text-blade">Ninjas</span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-paper-faint">
               Hands-on networking education. Read the theory, then run real
@@ -56,7 +56,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-10 flex flex-col gap-2 border-t border-ink-line/60 pt-6 font-mono text-xs text-paper-faint sm:flex-row sm:items-center sm:justify-between">
-          <span>© {new Date().getFullYear()} NetworkNinja</span>
+          <span>© {new Date().getFullYear()} NetworkNinjas</span>
         </div>
       </div>
     </footer>

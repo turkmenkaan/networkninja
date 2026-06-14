@@ -1,5 +1,5 @@
 /**
- * Typed shapes for the NetworkNinja content library.
+ * Typed shapes for the NetworkNinjas content library.
  *
  * The source of truth is the files under ../content (paths/, units/). These
  * types mirror the YAML/MDX schema documented in docs/PLAN.md and

@@ -1,4 +1,4 @@
-# NetworkNinja — Project Plan
+# NetworkNinjas — Project Plan
 
 A website offering networking education + hands-on labs (Containerlab-based), starting with BGP. Begins as a personal learning tool, evolves into a public, monetizable platform.
 

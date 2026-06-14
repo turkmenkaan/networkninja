@@ -1,7 +1,7 @@
 ---
 name: network-ninja-module-creator
 description: >
-  Author new curriculum content for NetworkNinja, the hands-on networking-education
+  Author new curriculum content for NetworkNinjas, the hands-on networking-education
   platform. Use whenever creating, scaffolding, or expanding learning content (paths,
   modules, lessons, or Containerlab/FRR labs) so it follows the established content
   model, directory layout, FRR/Containerlab conventions, tasks.yaml verification schema,
@@ -10,9 +10,9 @@ description: >
   curriculum".
 ---
 
-# NetworkNinja Module Creator
+# NetworkNinjas Module Creator
 
-This skill encodes how content is authored for NetworkNinja so every new module matches
+This skill encodes how content is authored for NetworkNinjas so every new module matches
 the existing ones. Read it fully before authoring, then follow the workflow.
 
 **Authoritative context to skim first (do not duplicate it here, it can drift):**

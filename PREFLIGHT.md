@@ -1,11 +1,11 @@
-# Pre-Public-Launch Preflight (NetworkNinja)
+# Pre-Public-Launch Preflight (NetworkNinjas)
 
-A readiness checklist for taking NetworkNinja public. Status: planning only,
+A readiness checklist for taking NetworkNinjas public. Status: planning only,
 nothing here is implemented yet.
 
 ## Context
 
-NetworkNinja (Next.js 14 in `web/`, content in `content/`, Vercel + Supabase) is a working Tier-1 product: 3 of 5 BGP Fundamentals modules are content-complete (17 units, 7 labs), email signup works, diagrams are all components, analytics is wired. It has never been exposed publicly, and an audit found gaps in correctness, legal, security, SEO, ops, and resilience.
+NetworkNinjas (Next.js 14 in `web/`, content in `content/`, Vercel + Supabase) is a working Tier-1 product: 3 of 5 BGP Fundamentals modules are content-complete (17 units, 7 labs), email signup works, diagrams are all components, analytics is wired. It has never been exposed publicly, and an audit found gaps in correctness, legal, security, SEO, ops, and resilience.
 
 **Launch posture (decided):**
 - **Tier 1 only** (learners run labs locally with Containerlab). No hosted labs.
