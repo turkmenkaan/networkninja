@@ -15,6 +15,8 @@
  *     so React components keep using the same `useProgress` hook unchanged.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 export interface UnitProgress {
   /** Whether the learner marked the whole unit complete. */
   complete: boolean;
@@ -67,6 +69,11 @@ class ProgressStore {
   private state: ProgressState = EMPTY;
   private listeners = new Set<Listener>();
   private hydrated = false;
+  // Auth/sync layer (signed-in users only). localStorage stays the always-on
+  // cache, so anonymous behavior is completely unchanged.
+  private supabase: SupabaseClient | null = null;
+  private userId: string | null = null;
+  private syncing = false;
 
   /** Lazily hydrate from localStorage on first client access. */
   private ensureHydrated() {
@@ -122,6 +129,7 @@ class ProgressStore {
         units: { ...s.units, [unitId]: { ...u, complete } },
       };
     });
+    this.pushUnit(unitId);
   }
 
   toggleObjective(unitId: string, objectiveId: string, checked: boolean) {
@@ -137,10 +145,115 @@ class ProgressStore {
         },
       };
     });
+    this.pushUnit(unitId);
   }
 
   resetAll() {
     this.mutate(() => ({ units: {} }));
+    this.deleteRemote();
+  }
+
+  // ---- Supabase sync (signed-in users only) -------------------------------
+  // These are called by SessionBridge, not by UI components, so the public
+  // mutation API above stays unchanged.
+
+  setSupabase(client: SupabaseClient | null) {
+    this.supabase = client;
+  }
+
+  /** Wire the current auth user; a sign-in triggers a one-time merge-sync. */
+  setUser(userId: string | null) {
+    const changed = this.userId !== userId;
+    this.userId = userId;
+    if (userId && this.supabase && changed) {
+      void this.syncOnSignIn(userId);
+    }
+  }
+
+  /**
+   * On sign-in: fetch the user's remote rows, OR-merge with local (monotonic,
+   * "complete wins"), publish the merged state, then push it back so any
+   * local-only progress is preserved server-side. Fail-soft: on any error,
+   * local stays authoritative.
+   */
+  private async syncOnSignIn(userId: string) {
+    if (!this.supabase || this.syncing) return;
+    this.syncing = true;
+    try {
+      this.ensureHydrated();
+      const local = this.state;
+
+      const { data, error } = await this.supabase
+        .from("progress")
+        .select("unit_id, complete, objectives")
+        .eq("user_id", userId);
+      if (error) return;
+
+      const remote: ProgressState = { units: {} };
+      for (const row of data ?? []) {
+        remote.units[row.unit_id as string] = {
+          complete: !!row.complete,
+          objectives: (row.objectives as Record<string, boolean>) ?? {},
+        };
+      }
+
+      const merged = mergeProgress(local, remote);
+      this.state = merged;
+      write(merged);
+      this.emit();
+
+      const rows = Object.entries(merged.units).map(([unit_id, u]) => ({
+        user_id: userId,
+        unit_id,
+        complete: u.complete,
+        objectives: u.objectives,
+        updated_at: new Date().toISOString(),
+      }));
+      if (rows.length) {
+        await this.supabase
+          .from("progress")
+          .upsert(rows, { onConflict: "user_id,unit_id" });
+      }
+    } catch {
+      /* network/transient — local progress is unaffected */
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  /** Fire-and-forget upsert of one unit's row on mutation while signed in. */
+  private pushUnit(unitId: string) {
+    if (!this.supabase || !this.userId) return;
+    const u = this.unit(this.state, unitId);
+    void this.supabase
+      .from("progress")
+      .upsert(
+        {
+          user_id: this.userId,
+          unit_id: unitId,
+          complete: u.complete,
+          objectives: u.objectives,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,unit_id" },
+      )
+      .then(
+        () => {},
+        () => {},
+      );
+  }
+
+  /** Remove the signed-in user's remote rows (called by resetAll). */
+  private deleteRemote() {
+    if (!this.supabase || !this.userId) return;
+    void this.supabase
+      .from("progress")
+      .delete()
+      .eq("user_id", this.userId)
+      .then(
+        () => {},
+        () => {},
+      );
   }
 }
 
@@ -165,4 +278,24 @@ export function countComplete(state: ProgressState, unitIds: string[]): number {
     (n, id) => (state.units[id]?.complete ? n + 1 : n),
     0,
   );
+}
+
+/**
+ * OR-merge two progress states. Monotonic: a unit is complete if it is complete
+ * in either, and each objective is OR'd. Used to reconcile local and remote on
+ * sign-in so progress only ever moves forward across devices.
+ */
+function mergeProgress(a: ProgressState, b: ProgressState): ProgressState {
+  const units: Record<string, UnitProgress> = {};
+  const ids = new Set([...Object.keys(a.units), ...Object.keys(b.units)]);
+  for (const id of ids) {
+    const ua = a.units[id];
+    const ub = b.units[id];
+    const objectives: Record<string, boolean> = { ...(ua?.objectives ?? {}) };
+    for (const [k, v] of Object.entries(ub?.objectives ?? {})) {
+      objectives[k] = Boolean(objectives[k]) || v;
+    }
+    units[id] = { complete: !!(ua?.complete || ub?.complete), objectives };
+  }
+  return { units };
 }

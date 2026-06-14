@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./Logo";
+import { AuthButton } from "./auth/AuthButton";
 
 export function SiteHeader() {
   return (
@@ -28,6 +29,8 @@ export function SiteHeader() {
           >
             Start training
           </Link>
+          <span className="ml-1 hidden h-5 w-px bg-ink-line sm:block" aria-hidden />
+          <AuthButton />
         </nav>
       </div>
     </header>

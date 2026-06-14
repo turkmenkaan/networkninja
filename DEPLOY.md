@@ -82,6 +82,17 @@ The production domain is **networkninjas.app**, with the **apex** as primary and
    Then **redeploy** (env changes need a fresh build). The code reads this via `web/src/lib/site.ts` (which also defaults to `https://networkninjas.app` if unset). Verify `https://networkninjas.app/sitemap.xml` and `/robots.txt` show the real domain.
 5. **Supabase (later, when auth ships):** set Authentication → URL Configuration → Site URL to `https://networkninjas.app` and add it to the redirect allowlist. Not needed yet (auth is deferred).
 
+## Auth (GitHub sign-in + progress sync)
+Optional but live: GitHub OAuth with cross-device progress sync (see `docs/plans/github-auth-progress-sync.md`). Anonymous browsing keeps working; signing in just syncs progress. Setup (do once, against the real domain):
+
+1. **GitHub** → Settings → Developer settings → **OAuth Apps** → New. Authorization callback URL = `https://<your-project-ref>.supabase.co/auth/v1/callback` (the ref is the subdomain of `NEXT_PUBLIC_SUPABASE_URL`). Copy the **Client ID** and generate a **Client Secret**.
+2. **Supabase** → Authentication → **Providers → GitHub** → enable, paste the Client ID + Secret.
+3. **Supabase** → Authentication → **URL Configuration** → Site URL = `https://networkninjas.app`; add Redirect URLs `http://localhost:3000/**` and `https://networkninjas.app/**`.
+4. **Supabase** → SQL Editor → run `supabase/migrations/0002_progress.sql` (creates the `progress` table + RLS so each user reads/writes only their own rows).
+5. **Vercel** → Environment Variables → add `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (the `sb_publishable_...` key) for Production, then redeploy. (`NEXT_PUBLIC_*` is inlined at build, so it must be present at build time.)
+
+Verify: sign in with GitHub (avatar appears in the header), mark a unit complete → a row appears in `progress` (only your rows, via RLS); sign in on another browser → progress follows you. The secret key must stay absent from the client bundle: `grep -r sb_secret_ web/.next/static` returns nothing.
+
 ## After it's live
 - **Auto-deploys:** every push to `main` redeploys; PRs get preview URLs. Re-pushing content changes re-runs the build (content is read at build, so new lessons need a redeploy to appear).
 - **Rollback:** Vercel → Deployments → pick a previous one → "Promote to Production."
