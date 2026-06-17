@@ -5,6 +5,9 @@
  * component handles layout, edge-aware link routing, brand styling, an optional
  * legend, and an accessible label/caption. Prefer it over hand-rolled SVG/ASCII.
  *
+ * Optional `groups` draws a labelled box around a set of nodes — e.g. to enclose
+ * every router that belongs to one AS.
+ *
  * `nodeShape` picks the glyph:
  *   - "card" (default): a labelled AS card (ASN + name). For AS-level topologies.
  *   - "router": a router icon (cylinder + routing arrows) with the name beneath.
@@ -49,9 +52,21 @@ export interface ASLink {
   faint?: boolean;
 }
 
+/**
+ * A labelled box drawn around a set of nodes — e.g. to enclose every router in
+ * one AS. Rendered behind the nodes and links so it reads as a grouping cloud.
+ */
+export interface ASGroup {
+  /** Ids of the nodes this box encloses. */
+  nodes: string[];
+  /** Label shown at the top-left of the box, e.g. "AS 65001". */
+  label?: string;
+}
+
 export interface ASTopologyProps {
   nodes: ASNode[];
   links?: ASLink[];
+  groups?: ASGroup[];
   nodeShape?: "card" | "router";
   eyebrow?: string;
   legend?: string;
@@ -66,6 +81,11 @@ const CELL_H = 132;
 const CARD_W = 154;
 const CARD_H = 60;
 const ROW_TOP_PAD = 20;
+// Padding from the enclosed nodes to the edge of a group box. The horizontal
+// pad clears the widest sublabel; the top pad leaves room for the box label.
+const GROUP_PAD_X = 72;
+const GROUP_PAD_TOP = 26;
+const GROUP_PAD_BOTTOM = 14;
 
 interface Box {
   cx: number;
@@ -115,6 +135,28 @@ function boxOf(n: ASNode, shape: "card" | "router"): Box {
   };
 }
 
+/**
+ * The full vertical/horizontal footprint of a node *including* its labels
+ * (name, asn, sublabels), used to size group boxes around it. Mirrors the y
+ * offsets used when the node's text is rendered below.
+ */
+function nodeExtent(n: ASNode, shape: "card" | "router") {
+  const g = boxOf(n, shape);
+  const lines = toLines(n.sublabel);
+  let bottom: number;
+  if (shape === "router") {
+    bottom = lines.length
+      ? g.bottom + (n.asn ? 47 : 33) + (lines.length - 1) * 12
+      : g.bottom + (n.asn ? 33 : 18);
+  } else {
+    const sub = lines.length
+      ? g.cardY + (n.asn ? 56 : 50) + (lines.length - 1) * 11
+      : g.cardY + CARD_H;
+    bottom = Math.max(g.cardY + CARD_H, sub);
+  }
+  return { cx: g.cx, top: g.top, bottom };
+}
+
 /** The router glyph: a small cylinder with two opposing routing arrows. */
 function Router({ cx, my, muted }: { cx: number; my: number; muted?: boolean }) {
   const stroke = muted ? "#2a3340" : "#2f5b53";
@@ -139,6 +181,7 @@ function Router({ cx, my, muted }: { cx: number; my: number; muted?: boolean }) 
 export function ASTopology({
   nodes,
   links = [],
+  groups = [],
   nodeShape = "card",
   eyebrow,
   legend,
@@ -175,6 +218,45 @@ export function ASTopology({
         aria-label={label}
         className="block h-auto w-full"
       >
+        {groups.map((grp, i) => {
+          const ext = grp.nodes
+            .map((id) => byId.get(id))
+            .filter((n): n is ASNode => n != null)
+            .map((n) => nodeExtent(n, nodeShape));
+          if (!ext.length) return null;
+          const left = Math.min(...ext.map((e) => e.cx)) - GROUP_PAD_X;
+          const right = Math.max(...ext.map((e) => e.cx)) + GROUP_PAD_X;
+          const top = Math.min(...ext.map((e) => e.top)) - GROUP_PAD_TOP;
+          const bottom = Math.max(...ext.map((e) => e.bottom)) + GROUP_PAD_BOTTOM;
+          return (
+            <g key={`grp-${i}`}>
+              <rect
+                x={left}
+                y={top}
+                width={right - left}
+                height={bottom - top}
+                rx={16}
+                fill="#4fe0c4"
+                fillOpacity={0.035}
+                stroke="#2f5b53"
+                strokeWidth={1.4}
+                strokeDasharray="5 4"
+              />
+              {grp.label ? (
+                <text
+                  x={left + 12}
+                  y={top + 16}
+                  fontFamily="var(--font-mono)"
+                  fontSize={11}
+                  letterSpacing="0.5"
+                  fill="#4fe0c4"
+                >
+                  {grp.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
         {links.map((lk, i) => {
           const a = byId.get(lk.from);
           const b = byId.get(lk.to);

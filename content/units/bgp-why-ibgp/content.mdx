@@ -19,11 +19,11 @@ This is exactly what lets an AS act as **transit**: traffic can enter on one edg
   eyebrow="Carrying an external prefix across a transit AS"
   nodeShape="router"
   nodes={[
-    { id: "ext1", name: "ISP A", asn: "AS 64500", sublabel: "external", col: 0, row: 1, muted: true },
-    { id: "e1", name: "edge1", asn: "AS 65000", sublabel: "eBGP edge", col: 1, row: 1 },
-    { id: "core", name: "core", asn: "AS 65000", sublabel: "internal", col: 2, row: 0 },
-    { id: "e2", name: "edge2", asn: "AS 65000", sublabel: "eBGP edge", col: 3, row: 1 },
-    { id: "ext2", name: "ISP B", asn: "AS 64600", sublabel: "external", col: 4, row: 1, muted: true },
+    { id: "ext1", name: "ISP A", sublabel: "external", col: 0, row: 1, muted: true },
+    { id: "e1", name: "edge1", sublabel: "eBGP edge", col: 1, row: 1 },
+    { id: "core", name: "core", sublabel: "internal", col: 2, row: 0 },
+    { id: "e2", name: "edge2", sublabel: "eBGP edge", col: 3, row: 1 },
+    { id: "ext2", name: "ISP B", sublabel: "external", col: 4, row: 1, muted: true },
   ]}
   links={[
     { from: "ext1", to: "e1", label: "eBGP" },
@@ -31,6 +31,11 @@ This is exactly what lets an AS act as **transit**: traffic can enter on one edg
     { from: "e1", to: "e2", label: "iBGP" },
     { from: "core", to: "e2", label: "iBGP" },
     { from: "e2", to: "ext2", label: "eBGP", faint: true },
+  ]}
+  groups={[
+    { nodes: ["ext1"], label: "AS 64500" },
+    { nodes: ["e1", "core", "e2"], label: "AS 65000" },
+    { nodes: ["ext2"], label: "AS 64600" },
   ]}
   legend="eBGP at the edges, iBGP carries the prefix across the inside"
   caption={<>A prefix from ISP A arrives at <strong>edge1</strong> over eBGP. iBGP then carries it to <strong>core</strong> and <strong>edge2</strong> so the whole of AS 65000 can forward toward it, and can transit traffic out toward ISP B.</>}

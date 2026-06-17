@@ -58,17 +58,22 @@ Picture your network, AS 65010, connected to two upstream providers. LOCAL_PREF 
   eyebrow="One AS, two upstreams, two directions"
   nodeShape="router"
   nodes={[
-    { id: "up1", name: "Upstream A", asn: "AS 64500", sublabel: "preferred exit", col: 1, row: 0 },
-    { id: "up2", name: "Upstream B", asn: "AS 64600", sublabel: "backup exit", col: 1, row: 2 },
-    { id: "r1", name: "r1", asn: "AS 65010", sublabel: "edge to A", col: 0, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65010", sublabel: "edge to B", col: 0, row: 2 },
-    { id: "core", name: "core", asn: "AS 65010", sublabel: "internal", col: 0, row: 1 },
+    { id: "up1", name: "Upstream A", sublabel: "preferred exit", col: 1, row: 0 },
+    { id: "up2", name: "Upstream B", sublabel: "backup exit", col: 1, row: 2 },
+    { id: "r1", name: "r1", sublabel: "edge to A", col: 0, row: 0 },
+    { id: "r2", name: "r2", sublabel: "edge to B", col: 0, row: 2 },
+    { id: "core", name: "core", sublabel: "internal", col: 0, row: 1 },
   ]}
   links={[
     { from: "r1", to: "up1", label: "eBGP: LOCAL_PREF 200 inbound -> outbound favors A" },
     { from: "r2", to: "up2", label: "eBGP: backup, LOCAL_PREF 100" },
     { from: "r1", to: "core", label: "iBGP: LOCAL_PREF shared AS-wide" },
     { from: "r2", to: "core", label: "iBGP: LOCAL_PREF shared AS-wide" },
+  ]}
+  groups={[
+    { nodes: ["r1", "r2", "core"], label: "AS 65010" },
+    { nodes: ["up1"], label: "AS 64500" },
+    { nodes: ["up2"], label: "AS 64600" },
   ]}
   legend="LOCAL_PREF steers your outbound, MED hints the neighbor's inbound"
   caption={<>On routes learned from <strong>Upstream A</strong>, r1 sets <strong>LOCAL_PREF 200</strong>. That value rides iBGP to core and r2, so the whole AS sends <strong>outbound</strong> traffic out via A. Separately, when r1 and r2 advertise your prefixes, they attach a <strong>MED</strong> (lower on A) to hint that A is your preferred <strong>inbound</strong> door, a request the upstreams may honor or ignore.</>}

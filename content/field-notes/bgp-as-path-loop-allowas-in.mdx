@@ -43,6 +43,22 @@ Use the project addressing. Picture two customer sites that share **AS 65001**, 
 
 site1 originates `1.1.1.1/32`. It travels site1 -> prov -> site2. By the time it reaches site2 the AS_PATH reads `65002 65001`. site2 is AS 65001, sees its own ASN in there, and drops the prefix. From site2 the route simply never appears.
 
+<ASTopology
+  nodeShape="router"
+  eyebrow="Two-site case"
+  nodes={[
+    { id: "site1", name: "site1", asn: "AS 65001", sublabel: ["originates 1.1.1.1/32", "lo 1.1.1.1/32", "eth1 10.0.12.1/24"], col: 0, row: 0 },
+    { id: "prov", name: "prov", asn: "AS 65002", sublabel: ["transit", "eth1 10.0.12.2/24"], col: 1, row: 0 },
+    { id: "site2", name: "site2", asn: "AS 65001", sublabel: ["drops on receipt", "lo 2.2.2.2/32", "eth1 10.0.12.3/24"], col: 2, row: 0 },
+  ]}
+  links={[
+    { from: "site1", to: "prov" },
+    { from: "prov", to: "site2" },
+  ]}
+  legend="site1 and site2 share AS 65001, joined through prov on 10.0.12.0/24."
+  caption={<>1.1.1.1/32 leaves site1, crosses prov, and reaches site2 with AS_PATH <code>65002 65001</code>. site2 is AS 65001, sees its own ASN, and drops the prefix on the inbound loop check.</>}
+/>
+
 ## Confirm it in FRR
 
 First, the symptom. The prefix count from site1 looks one short on site2:

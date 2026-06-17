@@ -258,6 +258,11 @@ containerlab destroy -t topology.clab.yml
   - `<ASTopology>`: autonomous-system / router topologies. Place nodes on a `col`/`row` grid
     and connect them with `links`; supports `eyebrow`, `legend`, `caption`, `muted` nodes, and
     `faint` links. (See `content/units/bgp-why-bgp-exists/content.mdx` for a worked example.)
+    Use `groups` to draw a labelled box around a set of node ids — e.g. one box per AS to show
+    which routers live in which AS. Rule of thumb: when **any** AS in the topology has more than
+    one router, box **all** ASes (single-router ones included) and drop the per-node `asn` so the
+    box label carries the AS and you don't show it twice. If every AS has exactly one router,
+    skip `groups`. (See `content/units/bgp-next-hop-self/content.mdx` for a worked example.)
   - `<MessageTimeline>`: "protocol chattiness over time" charts (`burst` / `flat` / `pulse`
     phases).
   - `<HierarchyTree>`: top-down tiered hierarchy / delegation trees (e.g. IANA -> RIRs ->

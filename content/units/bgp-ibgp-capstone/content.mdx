@@ -10,17 +10,22 @@ Nothing routing is staged anywhere. The five routers have interface and loopback
   eyebrow="Five routers in a line; AS 65000 is the transit core"
   nodeShape="router"
   nodes={[
-    { id: "r4", name: "r4", asn: "AS 65001", sublabel: ["lo 4.4.4.4/32", "eth1 10.0.14.4/24"], col: 0, row: 0 },
-    { id: "r1", name: "r1", asn: "AS 65000", sublabel: ["edge", "lo 1.1.1.1/32", "eth1 10.0.14.1/24", "eth2 10.0.12.1/24"], col: 1, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65000", sublabel: ["core", "lo 2.2.2.2/32", "eth1 10.0.12.2/24", "eth2 10.0.23.2/24"], col: 2, row: 0 },
-    { id: "r3", name: "r3", asn: "AS 65000", sublabel: ["edge", "lo 3.3.3.3/32", "eth1 10.0.23.3/24", "eth2 10.0.35.3/24"], col: 3, row: 0 },
-    { id: "r5", name: "r5", asn: "AS 65002", sublabel: ["lo 5.5.5.5/32", "eth1 10.0.35.5/24"], col: 4, row: 0 },
+    { id: "r4", name: "r4", sublabel: ["lo 4.4.4.4/32", "eth1 10.0.14.4/24"], col: 0, row: 0 },
+    { id: "r1", name: "r1", sublabel: ["edge", "lo 1.1.1.1/32", "eth1 10.0.14.1/24", "eth2 10.0.12.1/24"], col: 1, row: 0 },
+    { id: "r2", name: "r2", sublabel: ["core", "lo 2.2.2.2/32", "eth1 10.0.12.2/24", "eth2 10.0.23.2/24"], col: 2, row: 0 },
+    { id: "r3", name: "r3", sublabel: ["edge", "lo 3.3.3.3/32", "eth1 10.0.23.3/24", "eth2 10.0.35.3/24"], col: 3, row: 0 },
+    { id: "r5", name: "r5", sublabel: ["lo 5.5.5.5/32", "eth1 10.0.35.5/24"], col: 4, row: 0 },
   ]}
   links={[
     { from: "r4", to: "r1", label: "10.0.14.0/24 (eBGP edge)" },
     { from: "r1", to: "r2", label: "10.0.12.0/24 (internal)" },
     { from: "r2", to: "r3", label: "10.0.23.0/24 (internal)" },
     { from: "r3", to: "r5", label: "10.0.35.0/24 (eBGP edge)" },
+  ]}
+  groups={[
+    { nodes: ["r4"], label: "AS 65001" },
+    { nodes: ["r1", "r2", "r3"], label: "AS 65000" },
+    { nodes: ["r5"], label: "AS 65002" },
   ]}
   legend="r1 and r3 are the AS 65000 edges (eBGP outward, next-hop-self inward); r2 is the internal core"
   caption={<>r4 (eth1 .4) peers eBGP with r1 (eth1 .1) on 10.0.14.0/24. Inside AS 65000, r1-r2 share 10.0.12.0/24 and r2-r3 share 10.0.23.0/24. r3 (eth2 .3) peers eBGP with r5 (eth1 .5) on 10.0.35.0/24. r1 and r3 are not directly connected, so their iBGP session rides OSPF through r2.</>}
