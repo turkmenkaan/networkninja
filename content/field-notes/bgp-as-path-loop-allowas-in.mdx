@@ -1,0 +1,152 @@
+---
+title: "BGP Dropping My Route: AS_PATH Loop and the allowas-in Fix"
+description: "BGP route not received and nothing looks wrong? Your own ASN is in the AS_PATH and the router calls it a loop. Confirm it in FRR and fix it with allowas-in."
+slug: "bgp-as-path-loop-allowas-in"
+date: "2026-06-17"
+tags: [bgp, troubleshooting, as-path, frr]
+relatedUnit: "bgp-as-path-prepend"
+---
+
+The route is advertised. The session is **Established**. The far end has it in `show ip bgp`. And yet on the router that is supposed to receive it, the prefix is just... gone. No error, no rejected counter, nothing in the config that screams "I dropped this." This one fools people because the receiver is doing exactly what it was built to do.
+
+The mechanism is eBGP loop prevention. When a BGP router receives a prefix and its own AS number already appears in that prefix's **AS_PATH**, the router assumes the advertisement looped back to it through the outside world. So it discards the route on receipt, silently. This is correct default behavior, not a bug. It is the same rule that keeps a single bad advertisement from circulating forever between autonomous systems.
+
+The reason it is so confusing: a dropped-on-receipt route never lands in the BGP table, so `show ip bgp` shows nothing to investigate. You go looking for a route-map or a prefix-list, and they are all clean. The route was filtered by a rule that does not live in your config at all.
+
+## Quickest triage
+
+If a prefix is missing on the receiving router and everything else checks out:
+
+1. The route exists and looks healthy on the **sending** router.
+2. The session is Established (`show ip bgp summary` shows a prefix count, not a state word).
+3. The missing prefix's **AS_PATH contains the receiver's own ASN**.
+
+If all three are true, this is loop prevention. The fix is `allowas-in` on the receiver, or `as-override` on the sender. Which one depends on whose router you control. Details below.
+
+## When this legitimately bites you
+
+You did not necessarily misconfigure anything. There are designs where the same ASN shows up on both ends on purpose:
+
+- **Hub-and-spoke or MPLS L3VPN where customer sites share one ASN.** A customer runs AS 65010 at every branch. Site A originates a prefix, it crosses the provider core, and reaches site B with `65010` already in the path. Site B refuses it because that is its own AS. The two sites cannot hear each other even though routing is otherwise perfect.
+- **A customer multihomed to two POPs of the same ISP.** The ISP uses a single ASN at both POPs. A route the customer sends into POP 1 comes back out of POP 2 carrying the ISP's ASN twice or carrying the customer ASN, and one side drops it on the loop check.
+- **Lab setups that reuse an ASN on purpose.** Reuse `65001` on two routers a few hops apart and you can reproduce this in minutes, which is the honest way to learn it.
+
+The common thread: an AS number appears in a path it legitimately should, and the default loop guard cannot tell "this looped" from "this design reuses an AS."
+
+## A concrete two-site case
+
+Use the project addressing. Picture two customer sites that share **AS 65001**, joined through a provider:
+
+- **site1** = AS 65001, loopback `1.1.1.1/32`, link toward the provider on `10.0.12.1`.
+- **prov** = AS 65002, the transit in the middle on `10.0.12.2`, also feeding the other site.
+- **site2** = AS 65001 (same ASN as site1), loopback `2.2.2.2/32`.
+
+site1 originates `1.1.1.1/32`. It travels site1 -> prov -> site2. By the time it reaches site2 the AS_PATH reads `65002 65001`. site2 is AS 65001, sees its own ASN in there, and drops the prefix. From site2 the route simply never appears.
+
+## Confirm it in FRR
+
+First, the symptom. The prefix count from site1 looks one short on site2:
+
+```
+site2# show ip bgp summary
+
+IPv4 Unicast Summary (VRF default):
+BGP router identifier 2.2.2.2, local AS number 65001 vrf-id 0
+
+Neighbor        V         AS   MsgRcvd   MsgSent   Up/Down State/PfxRcd
+10.0.12.2       4      65002       altered      14 00:06:11            0
+```
+
+Zero prefixes received, on a healthy Established session. The route was sent; it just did not survive the inbound loop check.
+
+To actually *see* a route that was dropped on receipt, you need the router to keep a copy of what arrived before any inbound processing. That is inbound soft-reconfiguration. Turn it on for the peer:
+
+```
+site2# configure terminal
+site2(config)# router bgp 65001
+site2(config-router)# neighbor 10.0.12.2 soft-reconfiguration inbound
+site2(config-router)# end
+```
+
+Now the received-routes view works. Without `soft-reconfiguration inbound` configured, FRR returns an error telling you inbound soft reconfiguration is not enabled:
+
+```
+site2# show ip bgp neighbors 10.0.12.2 received-routes
+
+   Network          Next Hop            Metric LocPrf Weight Path
+   1.1.1.1/32       10.0.12.2                              0 65002 65001 i
+```
+
+There it is: the prefix arrived, and its path ends in `65001`, which is site2's own AS. That confirms loop prevention dropped it.
+
+If you want it spelled out in the log, turn on update debugging and clear the session:
+
+```
+site2# debug bgp updates
+site2# clear ip bgp 10.0.12.2 in
+```
+
+FRR logs the discard with a message noting the path contains the local AS, something close to:
+
+```
+%NOTIFICATION: bgp_update_receive: 10.0.12.2 [Update:recv] 1.1.1.1/32 -- DENIED due to: as-path contains our own AS;
+```
+
+That line is the smoking gun. "as-path contains our own AS" is the loop check firing.
+
+## The fix: allowas-in on the receiver
+
+`allowas-in` tells the receiving router to tolerate its own ASN in the AS_PATH up to a set number of times, which loosens the loop guard for that one neighbor. Apply it on **site2**, the router that is doing the dropping:
+
+```
+site2# configure terminal
+site2(config)# router bgp 65001
+site2(config-router)# neighbor 10.0.12.2 allowas-in 1
+site2(config-router)# end
+```
+
+The exact FRR syntax is:
+
+```
+neighbor <A.B.C.D|X:X::X:X|WORD> allowas-in [<(1-10)|origin>]
+```
+
+The number `(1-10)` sets how many times your own AS may appear in the path before the route is still dropped. For the two-site case above the path holds `65001` once, so `allowas-in 1` is enough. Set it to the real number of times your ASN can legitimately appear; do not just crank it to 10. There is also an `origin` keyword in place of the count, which accepts the route only if your own AS is the originator. The route-map variant of the command documents a default count of 3, but be explicit rather than relying on a default.
+
+Re-check after applying, and the prefix shows up:
+
+```
+site2# show ip bgp 1.1.1.1/32
+BGP routing table entry for 1.1.1.1/32
+Paths: (1 available, best #1, table default)
+  65002 65001
+    10.0.12.2 from 10.0.12.2 (10.0.12.2)
+      Origin IGP, valid, external, best (First path received)
+```
+
+## The counterpart: as-override on the sender
+
+`allowas-in` is the fix when you control the **receiver**. The other tool lives on the **sender**, usually the provider PE, and it is `as-override`:
+
+```
+neighbor <A.B.C.D|X:X::X:X|WORD> as-override
+```
+
+It rewrites any AS in the path that matches the neighbor's AS with the local AS, so the customer's ASN is replaced before the route ever reaches the far site. The far site then sees the provider AS instead of its own and accepts the route normally, no `allowas-in` needed on its end.
+
+So the choice comes down to access:
+
+- You run the receiving customer router -> `allowas-in` on the receiver.
+- You run the provider PE -> `as-override` toward the customer.
+
+In a shared-ASN L3VPN, providers typically reach for `as-override` because the customer sites are not theirs to touch. In a lab or your own network, `allowas-in` is right at hand.
+
+## One real warning
+
+`allowas-in` switches off a genuine loop-prevention safety. That guard exists for a reason: it stops advertisements from looping endlessly between autonomous systems. Disable it where there is no legitimate same-AS design and you can create an actual routing loop, the kind that churns until something times out.
+
+So treat it as a targeted tool for designs that reuse an AS on purpose (shared-ASN sites, same-AS multihoming), not a blanket "make the route appear" switch. Scope it to the one neighbor that needs it, set the count to the smallest number that works, and know exactly why your own ASN is in that path before you wave it through.
+
+## Practice this
+
+Want to watch the loop check fire and clear it yourself? Spin up the AS_PATH lab below, prepend and reuse ASNs in a real FRR topology, and see a route vanish on receipt and come back the moment you tune the path. Breaking it on purpose is the fastest way to recognize it for real.

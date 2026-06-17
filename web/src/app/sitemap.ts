@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 import { listPathIds, listUnitIds, loadUnitMeta } from "@/lib/content/paths";
+import { listFieldNotes } from "@/lib/content/field-notes";
 
 /**
  * Static sitemap: the home page, every learning path (including "coming soon"
@@ -34,6 +35,22 @@ export default function sitemap(): MetadataRoute.Sitemap {
     entries.push({
       url: `${SITE_URL}/units/${id}`,
       lastModified: now,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    });
+  }
+
+  // Field Notes blog: the index plus every post.
+  entries.push({
+    url: `${SITE_URL}/field-notes`,
+    lastModified: now,
+    changeFrequency: "weekly",
+    priority: 0.6,
+  });
+  for (const note of listFieldNotes()) {
+    entries.push({
+      url: `${SITE_URL}/field-notes/${note.meta.slug}`,
+      lastModified: note.meta.date ? new Date(note.meta.date) : now,
       changeFrequency: "monthly",
       priority: 0.6,
     });
