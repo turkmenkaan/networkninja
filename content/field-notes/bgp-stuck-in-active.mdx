@@ -1,0 +1,181 @@
+---
+title: "BGP Stuck in Active (or Idle/Connect): The Usual Causes"
+description: "BGP stuck in Active, Idle, or Connect and never reaching Established? Here are the usual causes and the exact FRR vtysh commands to confirm each one."
+slug: "bgp-stuck-in-active"
+date: "2026-06-17"
+tags: [bgp, troubleshooting, frr, containerlab]
+relatedUnit: "bgp-ebgp-peering"
+---
+
+You typed `show ip bgp summary`, the neighbor says **Active**, and nothing is moving. Annoying part: "Active" sounds like a good thing. It is not. In BGP-speak, Active means "I am actively trying to open a TCP connection to my peer and failing." Your session is stuck, not working.
+
+Here is the short version of the BGP finite state machine, the path every session walks before it carries a single route:
+
+**Idle -> Connect -> Active -> OpenSent -> OpenConfirm -> Established**
+
+- **Idle**: BGP is not even trying yet (often a config or reachability problem, or it just backed off after a failure).
+- **Connect**: waiting on the TCP/179 handshake to complete.
+- **Active**: the previous connect attempt failed, so it is retrying. This is the classic "stuck" state.
+- **OpenSent / OpenConfirm**: TCP is up and the two routers are negotiating BGP OPEN parameters (AS numbers, capabilities, hold time).
+- **Established**: it works. Routes can flow.
+
+Anything short of Established means no prefixes. The state name tells you roughly how far the session got, which is most of the diagnosis.
+
+## Quickest triage (the 30-second version)
+
+1. Can you `ping` the neighbor IP from this router? No ping, no BGP.
+2. Does your `remote-as` match the other side's actual AS, and vice versa?
+3. Is the far end configured at all and pointing back at your IP?
+4. Are you peering across more than one hop without `ebgp-multihop`, or over loopbacks without `update-source` / `disable-connected-check`?
+5. Is a firewall or a missing route eating TCP/179?
+
+If all five are clean and it is still down, read on.
+
+## Read the state first
+
+```
+r1# show ip bgp summary
+
+IPv4 Unicast Summary (VRF default):
+BGP router identifier 1.1.1.1, local AS number 65001 vrf-id 0
+
+Neighbor        V         AS   MsgRcvd   MsgSent   Up/Down State/PfxRcd
+10.0.12.2       4      65002         0         0   never           Active
+```
+
+That `State/PfxRcd` column is the whole story. A number (like `3`) means Established with three prefixes received. A word (`Active`, `Idle`, `Connect`) means the session never came up. Note `MsgRcvd 0`: you are not hearing a thing back. Now work the list.
+
+## 1. No Layer 3 reachability to the neighbor
+
+This is the most common cause, full stop. BGP rides on TCP, and TCP needs a route to the peer.
+
+**Confirm it:**
+
+```
+r1# ping 10.0.12.2
+r1# show interface brief
+r1# show ip route 10.0.12.2
+```
+
+If the ping fails, stop chasing BGP. Look for an interface that is down, an address typo, or a subnet mismatch (one side on `/24`, the other fat-fingered to `/30`). On a real box this also catches an `eth1` that never came up.
+
+**Fix:** get the interface up and the addressing right until the neighbor IP pings. Symptom in the summary is usually **Active** or **Connect**, because the SYN goes nowhere.
+
+## 2. Wrong neighbor IP or wrong remote-as
+
+Two flavors here. Either you pointed `neighbor` at the wrong address, or the AS numbers disagree.
+
+For eBGP, each side's `remote-as` must equal the **other** router's real AS. r1 is in AS 65001 and peers with r2 in AS 65002, so r1 says `remote-as 65002` and r2 says `remote-as 65001`. Swap one of those and the OPEN gets rejected.
+
+**Confirm it:**
+
+```
+r1# show bgp neighbor 10.0.12.2
+```
+
+Look for a notification about an AS mismatch. A telling line:
+
+```
+    Last Notification received: 6/2 (OPEN Message Error / Bad Peer AS)
+```
+
+If you instead see the session bouncing between **OpenSent** and Idle, that is the AS-mismatch fingerprint: TCP came up, but the OPEN was refused.
+
+**Fix:** correct the `neighbor <ip> remote-as <asn>` line so each side names the other's true AS.
+
+```
+r1# configure terminal
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 10.0.12.2 remote-as 65002
+r1(config-router)# end
+```
+
+## 3. TCP/179 blocked, or the far end is not listening
+
+A BGP session is two routers agreeing to talk. If only one side is configured, or a firewall drops port 179, you get a one-sided session that sits in Active or Connect forever.
+
+**Confirm it:** check the far end is actually configured and pointed back at you. If you can ping but TCP never completes, test the port:
+
+```
+r1# show ip bgp summary        (your side: Active)
+```
+
+From a shell on the box (FRR containers have it), probe 179 directly:
+
+```bash
+nc -vz 10.0.12.2 179
+```
+
+A refused or timed-out connection on a host you can ping points at either no BGP listener on the far end or an ACL/iptables rule dropping 179.
+
+**Fix:** configure the missing side, or open TCP/179 in both directions. In a Containerlab topology there is no firewall in the way, so "stuck in Active while ping works" almost always means the neighbor was never configured (or has a typo'd IP for you).
+
+## 4. Multihop / TTL: peering across more than one hop
+
+eBGP sends its packets with a TTL of 1 by default. That is a feature: directly connected eBGP peers are one hop apart, so TTL 1 is plenty, and it quietly blocks spoofed sessions from afar. The catch: the moment your peer is genuinely more than one hop away (say r1 peering with r3, two hops out through r2), TTL 1 expires in transit and the session never forms.
+
+**Confirm it:** you can ping the peer fine, but BGP sits in Active or Connect. `show bgp neighbor` shows it never reaching OpenSent.
+
+**Fix:** raise the TTL with `ebgp-multihop`, set to at least the hop count:
+
+```
+r1(config-router)# neighbor 3.3.3.3 remote-as 65003
+r1(config-router)# neighbor 3.3.3.3 ebgp-multihop 2
+```
+
+Note the trap here: `ebgp-multihop` is for peers that are *actually* several hops away. Peering router-to-router over loopbacks on **adjacent** routers is a different problem (see below), so do not reach for `ebgp-multihop` to fix that.
+
+## 5. Update-source / wrong source address
+
+This one loves to hide. When r1 peers with r2's loopback `2.2.2.2`, r2 has a `neighbor 1.1.1.1` statement expecting traffic *from* `1.1.1.1`. But by default r1 sources the TCP session from its outgoing interface (`10.0.12.1`), not its loopback. r2 sees an incoming connection from an IP it has no neighbor statement for, and drops it. Result: one side in Active, the other never sees a thing.
+
+**Confirm it:**
+
+```
+r1# show bgp neighbor 2.2.2.2
+```
+
+Check the "Local host" address in the output. If it is `10.0.12.1` but the peer expects `1.1.1.1`, that is your mismatch.
+
+**Fix:** pin the source so the peer sees the address it is configured for:
+
+```
+r1(config-router)# neighbor 2.2.2.2 update-source lo
+```
+
+Do it on both sides when both peer over loopbacks.
+
+There is a second gotcha that hits loopback eBGP peering *even on directly adjacent routers*: the connected check. eBGP expects the neighbor's address to sit on a directly connected subnet, but a `/32` loopback like `2.2.2.2` is reached through a route, not a connected interface, so the check fails and the session never forms. The fix is not `ebgp-multihop` (the peers are one hop apart, TTL 1 is fine), it is `disable-connected-check`:
+
+```
+r1(config-router)# neighbor 2.2.2.2 disable-connected-check
+```
+
+In practice, adjacent loopback eBGP peering usually needs both `update-source` and `disable-connected-check`, on both sides.
+
+## 6. MD5 authentication mismatch
+
+Set a password on one side and forget the other, or fat-finger it, and TCP itself will refuse to complete. With MD5, an unauthenticated or wrongly-keyed SYN never gets a clean handshake, so the session hangs in Active or Connect.
+
+**Confirm it:** logs are the giveaway. Watch them live:
+
+```
+r1# terminal monitor
+r1# debug bgp neighbor-events
+```
+
+A TCP MD5 mismatch typically shows nothing arriving at the BGP layer (the kernel rejects the segment), so you see repeated connect attempts and no OPEN. On Linux, `dmesg` may log MD5 hash failures.
+
+**Fix:** set the same password on both ends, or remove it from both:
+
+```
+r1(config-router)# neighbor 10.0.12.2 password n1nj4s3cret
+```
+
+## 7. MTU / large-packet blackholing (the imposter)
+
+Worth knowing so you do not misdiagnose. If a path drops large packets (a broken jumbo-frame config, a tunnel that ate the MTU), the small OPEN messages get through, the session reaches **Established**, then it flaps when the first big UPDATE or a large keepalive cannot pass. That looks like a session bouncing near Established, not one parked in Active. So if your symptom is "comes up then dies seconds later," look at MTU. If it never leaves Active, MTU is not your problem; go back to causes 1 through 4.
+
+## Practice this
+
+Reading about a stuck session is one thing. Breaking one on purpose and watching it claw back to Established is how it sticks. Spin up the **eBGP peering lab** below, bring a real FRR session to Established, then deliberately sabotage it (wrong `remote-as`, kill the far side, peer over loopbacks without `update-source`) and fix each break while reading the state in `show ip bgp summary`. After a couple of rounds, the next time a real session sits in Active you will already know which command to type first.

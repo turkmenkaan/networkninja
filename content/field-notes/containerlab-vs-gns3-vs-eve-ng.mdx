@@ -1,0 +1,87 @@
+---
+title: "Containerlab vs GNS3 vs EVE-NG for Network Labs"
+description: "Containerlab vs GNS3 vs EVE-NG, compared honestly: footprint, supported images, GUI vs YAML, licensing, and which network lab tool fits your study."
+slug: "containerlab-vs-gns3-vs-eve-ng"
+date: "2026-06-17"
+tags: [containerlab, gns3, eve-ng, network-labs, frr]
+relatedUnit: "lab-environment-setup"
+---
+
+You want to build a network lab on your own machine, and three names keep coming up: Containerlab, GNS3, and EVE-NG. Most "best network simulator" lists rank them like they all do the same job slightly differently. They do not. One architectural choice splits the field, and once you see it, the rest of the trade-offs fall out almost automatically.
+
+Here it is: **Containerlab is container-based (Docker). GNS3 and EVE-NG are primarily full-VM emulators (QEMU/KVM).** A Containerlab node is a process sharing your host kernel. A GNS3 or EVE-NG node is usually a complete virtual machine booting its own operating system. That difference predicts footprint, boot speed, which device images you can run, and how easily you can automate the whole thing. Keep it in your head and the comparison stops being a feature checklist and starts making sense.
+
+## The one-screen comparison
+
+| | Containerlab | GNS3 | EVE-NG |
+|---|---|---|---|
+| Core model | Containers (Docker) | Full VMs (QEMU) + Docker, Dynamips | Full VMs (QEMU) |
+| Footprint per node | Light | Heavy | Heavy |
+| Boot speed | Seconds | Slower (full OS boot) | Slower (full OS boot) |
+| Interface | CLI + declarative YAML | Desktop GUI, drag-and-drop | Browser GUI (HTML5) |
+| Best at | Containerized NOS (FRR, SR Linux, cEOS, SONiC) | Real vendor images (Cisco, Juniper) | Real vendor images, multi-user |
+| VM images | Via vrnetlab wrapper | Native | Native |
+| Reproducible / git-friendly | Strong (text topology) | Weaker (GUI project files) | Weaker (GUI project files) |
+| Cost | Free, open source (GPL-ish) | Free, open source (GPL) | Community free; Pro paid |
+
+Now the prose, because a table never tells you *why*.
+
+## Footprint and boot speed
+
+Containers win here, and it is not close. Because a Containerlab node borrows your host's kernel instead of booting its own, a single laptop can run a dozen FRR routers without breaking a sweat, and a topology comes up in seconds. You change the YAML, you tear down, you redeploy, and you are back in business before a VM-based lab has finished its first boot screen.
+
+GNS3 and EVE-NG carry the cost of real virtual machines. Each Cisco or Juniper image boots a full operating system, claims its slice of RAM, and takes its time. That is not a bug, it is the price of running the actual vendor software. But it does mean a five-router topology on EVE-NG asks a lot more of your hardware than the same count of FRR containers, and big topologies push you toward a beefy host or a dedicated server.
+
+If your goal is "spin up routing scenarios fast on the machine I already own," the container model is hard to beat.
+
+## What you can actually run
+
+This is the axis that should drive your decision, so be honest with yourself about which images you need.
+
+Containerlab is at its best with containerized network operating systems: FRRouting, Nokia SR Linux, Arista cEOS, SONiC, Juniper cRPD, Cumulus VX, and friends. These are real, production-grade stacks that ship as containers, and Containerlab runs them natively. It can also wrap traditional VM images (Juniper vMX, Cisco XRv9k, and others) using a tool called vrnetlab, so it is not locked out of the VM world. That path just takes more setup than the native container case.
+
+GNS3 and EVE-NG were built around full vendor images, and that is exactly where they earn their keep. If your study plan calls for Cisco IOSv, IOL, CSR1000v, IOS-XR, or Juniper vMX, these tools run them the way the vendor intended. For CCNA, CCNP, and other Cisco-flavored certs where you need the genuine IOS CLI quirks, that authenticity matters. GNS3 reaches even wider by mixing Dynamips, QEMU, and Docker in one project.
+
+The honest summary: if the image you care about ships as a container, Containerlab is the smoothest road. If it only exists as a vendor VM, GNS3 or EVE-NG were built for that day.
+
+## Interface: YAML versus the canvas
+
+Containerlab has no canvas. You describe your topology in a YAML file, run one command, and the lab exists. That file lives in git, diffs cleanly, and rebuilds identically on any machine. Hand it to a teammate or drop it in CI and you get the same lab every time. For anyone who already lives in a terminal, this is the dream: your network is text, and text is automatable.
+
+GNS3 and EVE-NG are visual. You drag routers onto a canvas, draw links by hand, and watch the topology take shape. EVE-NG runs entirely in your browser, so you can reach a lab hosted on a server from any device with no client install. For visual learners, and for anyone who wants to *see* the topology rather than read it, the GUI is a genuine strength. The trade-off is reproducibility: a hand-drawn project is harder to version, diff, or rebuild from scratch than a few lines of YAML.
+
+Neither approach is "better." A CLI-and-YAML workflow rewards automation and repeatability. A drag-and-drop canvas rewards visualization and quick exploration. Pick the one that matches how your brain works.
+
+## Licensing and cost
+
+Cost rarely decides this one, but there is an asterisk worth knowing.
+
+- **Containerlab** is open source and free.
+- **GNS3** is open source (GPL) and free.
+- **EVE-NG** ships a free Community edition and a paid Professional edition. Community is plenty for individual study and cert prep. Pro adds things like much larger node counts, multi-user roles, and better API and automation hooks, aimed at teams and training shops.
+
+All three give you a capable free path for solo study. The EVE-NG split only matters once you need Pro's scale or multi-user features.
+
+## Learning curve and who each one is for
+
+Containerlab asks you to be comfortable with a terminal, Docker, and editing a YAML file. If that is already your world, you will be productive in an afternoon. If it is not, there is a small ramp, though a smaller one than people expect.
+
+GNS3 lowers the entry bar with its desktop GUI, but the real friction is sourcing and importing vendor images, which is its own minor adventure. EVE-NG is similar: friendly browser interface, but the legwork moves to obtaining and loading images, and standing up the server in the first place.
+
+Roughly:
+
+- **Containerlab** suits automation-minded learners, FRR and SR Linux routing labs, and anyone who wants reproducible, scriptable topologies on a laptop.
+- **GNS3** suits learners who want a desktop GUI and need authentic Cisco or Juniper images, especially for cert tracks.
+- **EVE-NG** suits learners who like a browser-based lab, often on a central server, and teams that may grow into the Pro feature set.
+
+## Which should you pick
+
+Skip the "it depends" non-answer. Here is the call.
+
+- You want light, fast, reproducible routing labs (BGP, OSPF) with FRR or SR Linux on the laptop you already have, and you like your network as code: **Containerlab.**
+- You need genuine Cisco or Juniper images for CCNA/CCNP-style cert prep, or you want a desktop GUI to see and click your topology: **GNS3.**
+- You want a browser-based lab you can reach from anywhere, run real vendor images, and possibly scale to multi-user later: **EVE-NG** (Community to start, Pro if you outgrow it).
+
+None of these is a mistake. They optimize for different things, and the right one is whichever matches the images you need and the way you like to work.
+
+If door number one sounds like you, that is exactly what we build on here: real FRRouting routers, defined in YAML, on your own machine. The lab environment setup unit below walks you from an empty laptop to your first running topology, no vendor image hunting required.

@@ -35,11 +35,48 @@ The curriculum **is** the SEO asset: every lesson/lab is an indexable page targe
 **Tactics:**
 - **Technical SEO (mostly in PREFLIGHT P1):** sitemap.ts, robots.ts, OG image, favicon, correct `metadataBase` (real domain), per-page titles/descriptions (already present). Pages are static and fast - good baseline.
 - **Structured data:** add `Course`/`Article` + `FAQPage` JSON-LD to lesson/lab pages. Helps rich results and topical authority.
-- **A "Field Notes" blog** alongside the curriculum, for SEO articles that aren't full units: "Build a BGP lab in 5 minutes with Containerlab", "The iBGP next-hop problem (and 3 ways to fix it)", "RFC 8212: why your eBGP routes show (Policy)". Each funnels to the relevant lab. Set canonical URLs so cross-posts don't compete.
+- **A "Field Notes" blog** alongside the curriculum, for SEO articles that aren't full units: "Build a BGP lab in 5 minutes with Containerlab", "The iBGP next-hop problem (and 3 ways to fix it)", "RFC 8212: why your eBGP routes show (Policy)". Each funnels to the relevant lab. Set canonical URLs so cross-posts don't compete. (Full article backlog in section 1a below.)
 - **Backlinks (the slow but durable part):** submit to awesome-lists (awesome-networking, awesome-bgp, the Containerlab community showcase), get referenced by FRR/Containerlab community pages, cross-post articles to dev.to/Hashnode with canonical back to the site.
 - **Internal linking:** prerequisite links already connect units - good. Add "related labs" and contextual links from blog posts to units.
 
 > SEO is slow (3-6 months to compound) but it's the channel that keeps paying after you stop posting. Start the content + technical SEO now.
+
+---
+
+## 1a. Field Notes blog - article backlog
+
+Durable backlog for the Field Notes blog (see section 1). Ordered by SEO/search intent, strongest first. Each post funnels to a relevant lab/unit. The canonical principle: Field Notes should target queries the units don't already rank for (troubleshooting + how-to), and concept posts should use a comparison/reference angle so they don't cannibalize the units. Set canonical URLs on every cross-post.
+
+**Tier 1 - Troubleshooting long-tail (gold: highest intent, lowest competition; people paste exact symptoms):**
+- "BGP stuck in Active (or Idle/Connect): the usual causes" -> eBGP peering lab
+- "RFC 8212: why your eBGP routes show (Policy) in FRR" -> route-filtering lab
+- "iBGP route not installed - the next-hop-self problem" -> next-hop-self lab
+- "Why isn't my BGP route being advertised?" (network statement vs best-path vs policy) -> advertising-routes lab
+- "show ip bgp - why did BGP pick that route?" (reading the output) -> best-path / path-selection lab
+- "BGP neighbor keeps flapping" (MTU, keepalive/holdtime, TTL) -> observe-a-session lab
+
+**Tier 2 - Hands-on how-to (the containerlab/FRR niche we own):**
+- "Build a BGP lab in 5 minutes with Containerlab + FRR" -> whole path
+- "A complete, copy-paste FRR eBGP config (explained)" -> eBGP module
+- "How to set up iBGP in FRR: full mesh, loopback peering, next-hop-self" -> iBGP module
+- "Containerlab cheat sheet: deploy, inspect, tear down" -> lab-environment-setup
+- "Free BGP practice labs you can run on a laptop" (listicle) -> path landing
+
+**Tier 3 - Concept explainers (comparison/reference angle so they don't cannibalize units):**
+- "eBGP vs iBGP: the differences that actually matter"
+- "BGP path selection in the exact order FRR evaluates it" (cheat-sheet)
+- "LOCAL_PREF vs MED vs weight: which knob for which job"
+- "AS_PATH prepend: when it works and when it quietly doesn't"
+
+**Tier 4 - Cert-adjacent:**
+- "BGP labs for CCNP ENCOR - hands-on practice mapped to the blueprint"
+- "Studying BGP for CCNA? Run routers instead of memorizing"
+
+**Tier 5 - Build-in-public (weak SEO, good to cross-post to X/Reddit):**
+- "Why I'm building a hands-on networking school on FRR + Containerlab"
+- Changelog posts, e.g. "Shipped: the iBGP transit-AS module"
+
+**Recommended first batch:** lead with the three Tier-1 troubleshooting posts (BGP stuck in Active; RFC 8212 (Policy); iBGP next-hop not installed) plus "Build a BGP lab in 5 minutes" as the Tier-2 anchor. These four hit the highest-intent, lowest-competition queries and each funnels straight to a lab.
 
 ---
 
