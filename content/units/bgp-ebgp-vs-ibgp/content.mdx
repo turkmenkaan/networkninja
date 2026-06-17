@@ -13,13 +13,17 @@ That's the entire distinction. You don't flip a mode switch; BGP looks at the `r
   eyebrow="The two flavors, side by side"
   nodeShape="router"
   nodes={[
-    { id: "r1", name: "r1", asn: "AS 65001", sublabel: "iBGP peer of r2", col: 0, row: 0 },
-    { id: "r2", name: "r2", asn: "AS 65001", sublabel: "iBGP peer of r1", col: 1, row: 0 },
-    { id: "r3", name: "r3", asn: "AS 65002", sublabel: "eBGP edge", col: 2, row: 0 },
+    { id: "r1", name: "r1", sublabel: "iBGP peer of r2", col: 0, row: 0 },
+    { id: "r2", name: "r2", sublabel: "iBGP peer of r1", col: 1, row: 0 },
+    { id: "r3", name: "r3", sublabel: "eBGP edge", col: 2, row: 0 },
   ]}
   links={[
     { from: "r1", to: "r2", label: "iBGP" },
     { from: "r2", to: "r3", label: "eBGP" },
+  ]}
+  groups={[
+    { nodes: ["r1", "r2"], label: "AS 65001" },
+    { nodes: ["r3"], label: "AS 65002" },
   ]}
   legend="Same ASN = iBGP, different ASN = eBGP"
   caption={<>r1 and r2 share AS 65001, so the session between them is <strong>iBGP</strong>. r2 to r3 crosses into AS 65002, so that session is <strong>eBGP</strong>. The ASNs alone decide.</>}
