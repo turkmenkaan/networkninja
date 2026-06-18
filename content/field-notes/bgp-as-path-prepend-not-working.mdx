@@ -29,7 +29,7 @@ Here is the part of the BGP best-path order that matters for this discussion, hi
 1. **WEIGHT** (Cisco-ism, local to one router, highest of all)
 2. **LOCAL_PREF** (the AS-wide outbound preference knob)
 3. **Locally originated** (routes this router originated win)
-4. **AS_PATH length** (shorter wins) <- prepend lives here
+4. **AS_PATH length** (shorter wins) `<-` prepend lives here
 5. MED, eBGP-over-iBGP, IGP metric, and the rest of the tiebreakers
 
 Look where AS_PATH length sits. Everything above it overrides it. WEIGHT, LOCAL_PREF, and locally-originated all get evaluated *first*, and if any of them already separates the two paths, the algorithm never even reaches the AS_PATH-length comparison. Your beautiful triple prepend is sitting in step 4 waiting for its turn that never comes.
