@@ -18,10 +18,10 @@ export function SiteHeader() {
 
         <nav className="flex items-center gap-1 text-sm">
           <Link
-            href="/paths/bgp-fundamentals"
+            href="/paths"
             className="hidden rounded-lg px-3 py-1.5 text-paper-muted transition-colors hover:bg-ink-glow hover:text-paper sm:inline-block"
           >
-            BGP Path
+            Paths
           </Link>
           <Link
             href="/field-notes"

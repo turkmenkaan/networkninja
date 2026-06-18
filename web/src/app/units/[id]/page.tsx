@@ -17,6 +17,7 @@ import {
   ArrowIcon,
 } from "@/components/ui";
 import { MarkComplete } from "@/components/progress/MarkComplete";
+import { ReportIssue } from "@/components/ReportIssue";
 import { ObjectivesChecklist } from "@/components/progress/ObjectivesChecklist";
 import { LabRequirement } from "@/components/LabRequirement";
 import { LabDownloadButton } from "@/components/LabDownloadButton";
@@ -205,12 +206,19 @@ export default function UnitPage({ params }: { params: { id: string } }) {
           <div className="mt-12 border-t border-ink-line/70 pt-8">
             <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <MarkComplete unitId={meta.id} />
-              {ctx && (
-                <span className="font-mono text-xs text-paper-faint">
-                  unit {ctx.index + 1} of {ctx.flat.length} ·{" "}
-                  {ctx.flat[ctx.index]?.moduleTitle}
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                {ctx && (
+                  <span className="font-mono text-xs text-paper-faint">
+                    unit {ctx.index + 1} of {ctx.flat.length} ·{" "}
+                    {ctx.flat[ctx.index]?.moduleTitle}
+                  </span>
+                )}
+                <ReportIssue
+                  unitId={meta.id}
+                  unitTitle={meta.title}
+                  unitType={meta.type}
+                />
+              </div>
             </div>
 
             <div className="mt-6 grid gap-3 sm:grid-cols-2">

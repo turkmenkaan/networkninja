@@ -1,0 +1,12 @@
+id: snmp-oids-and-mibs
+type: lesson
+title: "OIDs and MIBs: How SNMP Names Things"
+summary: "Every value SNMP can read has an address in a global tree. Learn to read OIDs, map them to human MIB names, and tell a scalar from a table."
+path: snmp-fundamentals
+module: snmp-foundations
+difficulty: beginner
+estimated_minutes: 14
+prerequisites: [snmp-manager-agent-and-pdus]
+tags: [snmp, fundamentals, mib, oid]
+status: published
+version: 1

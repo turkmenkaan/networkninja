@@ -1,0 +1,55 @@
+# Path manifest - machine-readable source of truth for the SNMP Fundamentals path.
+# Human-readable outline lives in docs/curriculum/snmp-fundamentals.md.
+# Units are referenced by id; their content lives in content/units/<id>/.
+# `status` lets the app render unbuilt units as "coming soon".
+#
+# NOTE: every unit below is `planned`. None are authored yet; this manifest
+# exists so the site can advertise the path as coming soon. As units are built,
+# flip them planned -> published (parent-only), exactly as the BGP path was.
+#
+# NOTE: this is the first NON-FRR path. Labs run a net-snmp manager + agent
+# (standalone), so `network_os` is net-snmp rather than frrouting/frr. The exact
+# image tag is chosen and verified against the registry at authoring time
+# (never pin an unverified tag).
+
+id: snmp-fundamentals
+title: "SNMP Fundamentals"
+summary: >
+  From "why does a network need a management protocol" to confidently polling
+  devices with SNMPv2c, securing access with SNMPv3, and catching traps - all
+  hands-on with a net-snmp manager and agent.
+network_os: net-snmp
+status: in-progress
+
+modules:
+  - id: snmp-foundations
+    title: "SNMP Foundations"
+    units:
+      - { id: snmp-why-snmp-exists,         status: published }
+      - { id: snmp-manager-agent-and-pdus,  status: published }
+      - { id: snmp-oids-and-mibs,           status: published }
+      - { id: snmp-versions-and-communities, status: published }
+      - { id: lab-environment-setup,        status: published }
+      - { id: snmp-observe-a-walk,          status: planned }
+
+  - id: snmp-polling-v2c
+    title: "Polling with SNMPv2c"
+    units:
+      - { id: snmp-enable-the-agent,        status: planned }
+      - { id: snmp-get-walk-bulk,           status: planned }
+      - { id: snmp-interface-table,         status: planned }
+      - { id: snmp-polling-capstone,        status: planned }
+
+  - id: snmp-v3-security
+    title: "Securing SNMP with v3"
+    units:
+      - { id: snmp-v3-security-model,       status: planned }
+      - { id: snmp-configure-v3-user,       status: planned }
+      - { id: snmp-v3-capstone,             status: planned }
+
+  - id: snmp-traps
+    title: "Traps & Notifications"
+    units:
+      - { id: snmp-traps-and-informs,       status: planned }
+      - { id: snmp-receive-a-trap,          status: planned }
+      - { id: snmp-monitoring-capstone,     status: planned }

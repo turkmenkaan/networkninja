@@ -1,0 +1,76 @@
+# Managers, Agents, and PDUs
+
+You already know *why* SNMP exists: nobody hand-checks a thousand devices, so you let software ask the questions instead. This lesson is about *who* does the asking, *who* answers, and the exact little packets they trade to get it done. Three pieces, two ports, a short list of message types. Learn those and the rest of the path is just practice.
+
+## The three pieces
+
+Every SNMP conversation has exactly three players, and it helps to keep them straight from the start.
+
+- **The manager** (also called the NMS, network management station) is the one that asks. It is your monitoring server, your `snmpget` command, your dashboard polling the fleet. The manager *initiates*. It decides what to look at and when.
+- **The agent** is software running *on* the managed device: the router, the switch, the Linux box. It sits there, listens, and answers questions about the device it lives on. The agent almost never speaks first (the one exception, traps, comes later). Its whole job is to respond.
+- **The MIB** (Management Information Base) is the data model: the catalog of everything that *can* be asked about. Interface counters, uptime, the hostname, a temperature sensor, each one is a named object in the MIB.
+
+That last one trips people up, so say it plainly: the MIB is **not a process**. Nothing is "running the MIB." It is the menu, not the kitchen. It defines which objects exist and what type each one is (a counter, a string, an integer), and the agent serves values for those objects on request. When you ask the agent for something, you are asking for an object the MIB says should be there. If the MIB does not define it, the agent has nothing to hand back.
+
+So the model is short: the manager asks, the agent answers, and the MIB is the shared vocabulary that lets them mean the same thing by "interface 3's inbound byte count."
+
+## Two ports, both UDP
+
+SNMP runs over **UDP**, not TCP. That is deliberate: management traffic should be cheap and lightweight, with no connection to set up and tear down for one quick question. UDP is connectionless, so a poll is just one packet out and (usually) one packet back. If a reply gets lost, the manager simply asks again. No sessions, no handshakes, no state to keep.
+
+There are two ports in play, and they belong to different sides:
+
+- **UDP 161**: the *agent* listens here. Every poll the manager sends (every GET, every walk) arrives on port 161 on the device, and the agent's answer goes back to the manager.
+- **UDP 162**: the *trap receiver* listens here, and the trap receiver lives on the manager side. When an agent has something urgent to announce on its own, it sends a notification to port 162.
+
+A clean way to remember it: **161 is "the manager asking the agent," 162 is "the agent telling the manager."** Polls flow toward 161; notifications flow toward 162. Mix them up and your traps land nowhere.
+
+## The PDUs: the actual messages
+
+Everything SNMP does on the wire is a **PDU** (Protocol Data Unit). There is a small, fixed set of them, and once you know the list you can read almost any SNMP exchange. Here is each one with the one situation you would reach for it.
+
+- **GET**: fetch one or more specific objects, named by their **OID** (object identifier). *Use it when you know exactly what you want*, for example "give me the system uptime."
+- **GETNEXT**: fetch the object that comes *lexicographically next* in the MIB tree after the OID you name. *Use it to discover what is there without knowing the names ahead of time.* GETNEXT is the primitive that makes **walking** the tree possible: ask for "next" over and over and you sweep through everything in order.
+- **GETBULK** (added in v2c): ask for many objects, or many rows of a table, in a single request instead of one GETNEXT round trip per object. *Use it when pulling a large table* (an interface table with hundreds of rows) so you are not paying for a separate request per entry.
+- **SET**: *write* a value, named by OID. *Use it to change configuration or trigger an action on the device.* This is the powerful and riskier one: GETs only read, but a SET reaches in and changes the box, so it is locked down far more tightly (and often disabled entirely).
+- **RESPONSE**: the agent's reply. *It is never something you send*, it is what comes back, carrying either the requested values or an error. Every GET, GETNEXT, GETBULK, and SET is answered by exactly one RESPONSE.
+- **TRAP / INFORM**: the agent-initiated ones, sent *without being asked*, to announce an event (a link went down, the box just rebooted). *Use them when waiting for the next poll would be too slow.* The difference between the two is acknowledgement: an **INFORM** is confirmed by the receiver (the manager sends a RESPONSE back, so the agent knows it arrived), while a **TRAP** is fire-and-forget (sent once, with no idea whether it landed). We give traps and informs a full lesson of their own later; for now, just file them as "the agent talking first, to port 162."
+
+## The request/response round trip
+
+Now walk through the most common exchange, a single poll, start to finish.
+
+<MessageTimeline
+  eyebrow="Poll vs trap traffic"
+  axisLabel="MSGS"
+  timeLabel="time →"
+  phases={[
+    { type: "pulse", label: "manager polls", sublabel: "GET → 161, RESPONSE back", accent: "blade" },
+    { type: "flat", label: "steady state", sublabel: "(quiet between polls)", accent: "muted" },
+    { type: "pulse", label: "event fires", sublabel: "agent TRAP → 162", accent: "sakura" },
+  ]}
+  caption="The manager drives the rhythm: a GET to UDP 161 and one RESPONSE back, repeated on a schedule. In between, the line is quiet, until the agent has an event worth pushing on its own to UDP 162."
+/>
+
+Concretely, one poll looks like this:
+
+1. The **manager** builds a GET naming the OID it wants and sends it to **UDP 161** on the device.
+2. The **agent** receives it, looks the object up in its **MIB**, and reads the current value.
+3. The agent packs that value into a **RESPONSE** and sends it back to the manager.
+
+Here is that exchange from the manager's side with the net-snmp tools you will use throughout this path:
+
+```
+$ snmpget -v2c -c public 10.0.0.11 sysUpTime.0
+DISMAN-EVENT-MIB::sysUpTimeInstance = Timeticks: (884512) 2:27:25.12
+```
+
+One GET out, one RESPONSE back, done.
+
+That RESPONSE carries more than just values. It also has an **error-status** and an **error-index** so the agent can tell you when something went wrong. On a clean reply the error-status is **`noError`**. Ask for an object that does not exist and an older agent answers with **`noSuchName`**; the **error-index** then points at *which* object in your request was the problem (the first one, the third one), so you are not left guessing. Most of the time you will see `noError` and the values you wanted, but knowing the error fields exist is what turns a confusing empty result into an obvious "you asked for the wrong OID."
+
+## What's next
+
+That is the whole machine in miniature: a **manager** that asks, an **agent** that answers, a **MIB** that defines what is askable, two UDP ports (161 for polls, 162 for traps), and a tidy set of PDUs (GET, GETNEXT, GETBULK, SET, RESPONSE, and the agent-initiated TRAP/INFORM). Every lab ahead is some combination of these.
+
+The one piece we kept waving at is the OID: the names and numbers you actually put in a GET. Next, in `snmp-oids-and-mibs`, we crack open the MIB tree itself, see how `sysDescr` and `1.3.6.1.2.1.1.1.0` are the same thing, and learn to navigate from a name to the exact object you want to poll.

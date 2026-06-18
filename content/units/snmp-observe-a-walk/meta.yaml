@@ -1,0 +1,21 @@
+id: snmp-observe-a-walk
+type: lab
+title: "Observe an SNMP Walk"
+summary: "A pre-configured agent and manager boot ready. Tour the MIB by hand: read sysDescr, walk the system group, and walk the interface table, no configuration required."
+path: snmp-fundamentals
+module: snmp-foundations
+difficulty: beginner
+estimated_minutes: 20
+prerequisites: [snmp-versions-and-communities, lab-environment-setup]
+tags: [snmp, lab, snmpwalk, mib]
+mode: guided
+
+# Ignored in Tier 1; consumed by the Tier 2 runner for scheduling/sizing.
+runtime:
+  nodes: 2
+  est_ram_mb: 256
+  images: [alpine]
+  est_boot_seconds: 15
+
+status: published
+version: 1

@@ -1,0 +1,12 @@
+id: snmp-versions-and-communities
+type: lesson
+title: "Versions and Community Strings"
+summary: "v1, v2c, and v3 at a glance, why the community string is both ubiquitous and weak, and what finally fixes it."
+path: snmp-fundamentals
+module: snmp-foundations
+difficulty: beginner
+estimated_minutes: 12
+prerequisites: [snmp-oids-and-mibs]
+tags: [snmp, fundamentals, versions, security]
+status: published
+version: 1

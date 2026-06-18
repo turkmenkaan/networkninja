@@ -1,0 +1,12 @@
+id: snmp-manager-agent-and-pdus
+type: lesson
+title: "Managers, Agents, and PDUs"
+summary: "The three pieces of every SNMP exchange (manager, agent, MIB), the two UDP ports that carry it, and the request/response PDUs that do the actual work."
+path: snmp-fundamentals
+module: snmp-foundations
+difficulty: beginner
+estimated_minutes: 14
+prerequisites: [snmp-why-snmp-exists]
+tags: [snmp, fundamentals, pdu, architecture]
+status: published
+version: 1

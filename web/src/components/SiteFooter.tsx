@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Logo } from "./Logo";
+import { SupportRequest } from "./SupportRequest";
 
 export function SiteFooter() {
   return (
@@ -57,6 +58,7 @@ export function SiteFooter() {
 
         <div className="mt-10 flex flex-col gap-2 border-t border-ink-line/60 pt-6 font-mono text-xs text-paper-faint sm:flex-row sm:items-center sm:justify-between">
           <span>© {new Date().getFullYear()} NetworkNinjas</span>
+          <SupportRequest />
         </div>
       </div>
     </footer>

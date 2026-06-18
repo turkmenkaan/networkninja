@@ -1,0 +1,155 @@
+---
+title: "BGP Route in the Table but Not in the Routing Table"
+description: "The prefix shows in show ip bgp but never reaches show ip route. The causes that bite FRR users, in priority order, with the vtysh commands to confirm each."
+slug: "bgp-route-not-in-routing-table"
+date: "2026-06-17"
+tags: [bgp, troubleshooting, frr, routing-table]
+relatedUnit: "bgp-next-hop-self"
+---
+
+You run `show ip bgp` and the prefix is right there. You run `show ip route` and it is gone. The control plane learned the route; the forwarding plane never got it. This is one of the most common "but it's *right there*" moments in BGP, and the good news is that the symptom narrows the cause down fast. A prefix in the BGP table but not the routing table is almost always one of four things, and FRR will tell you which if you ask it the right question.
+
+The single most useful idea to hold onto: **the BGP table (`show ip bgp`) and the routing table (`show ip route`) are different tables owned by different daemons.** `bgpd` builds the BGP table. `zebra` owns the routing table (the RIB) and decides what actually gets installed. A route has to clear *both* gates: BGP has to pick it as best, and then zebra has to accept it over everything else competing for the same prefix. The gap between those two tables is where your route is stuck.
+
+## The 30-second triage
+
+Ask these four questions in order. The first "no" is your answer.
+
+1. Is the path marked best (`>`) in `show ip bgp <prefix>`? If not, BGP never offered it to zebra.
+2. Is the **next-hop resolvable**? An unreachable next-hop makes the path invalid, so it never becomes best.
+3. Is the **same prefix** also learned from another protocol with a **lower administrative distance** (OSPF, static, connected)? If so, that one wins the RIB slot.
+4. Is `zebra` actually running and talking to `bgpd`?
+
+Now work them.
+
+## Read both tables first
+
+Pull up the prefix in the BGP table and the routing table side by side. The contrast tells you which gate it failed.
+
+```
+r2# show ip bgp 3.3.3.3/32
+r2# show ip route 3.3.3.3/32
+```
+
+Keep the status-code legend from `show ip bgp` in mind, because the flags are the whole diagnosis:
+
+```
+Status codes:  s suppressed, d damped, h history, * valid, > best, = multipath,
+               i internal, r RIB-failure, S Stale, R Removed
+```
+
+`*` means valid, `>` means best, and `r` means **zebra refused to install it**. Those three flags map almost one-to-one onto the causes below.
+
+## 1. The next-hop is unresolvable (by far the most common)
+
+BGP will not use a path whose next-hop it cannot reach. When a route is learned over eBGP and handed to an iBGP peer, the next-hop is **not** rewritten by default, so an internal router often receives the prefix with a next-hop that lives on some edge link it has never heard of. The path stays in the table but is marked invalid and never becomes best.
+
+**Confirm it:**
+
+```
+r2# show ip bgp 3.3.3.3/32
+
+BGP routing table entry for 3.3.3.3/32
+Paths: (1 available, no best path)
+  65002
+    10.0.13.3 (inaccessible) from 1.1.1.1 (1.1.1.1)
+      Origin IGP, localpref 100, invalid, external
+```
+
+The tells are `(inaccessible)` next to the next-hop, the word `invalid`, and `no best path`. Confirm the next-hop really has no route:
+
+```
+r2# show ip route 10.0.13.3
+% Network not in table
+```
+
+No route to the next-hop, so the path is dead on arrival.
+
+**Fix:** on the router injecting the route into iBGP, advertise itself as the next-hop so its peers can resolve it through the IGP:
+
+```
+r1(config-router)# neighbor 2.2.2.2 next-hop-self
+```
+
+(The alternative is to carry the edge subnet into your IGP, but `next-hop-self` is the cleaner standard fix.) This exact scenario is the whole point of the **next-hop-self lab** below — break it and fix it once and it stops surprising you.
+
+## 2. It is valid, but it is not the best path
+
+A prefix can be perfectly valid (`*`) and still not be installed, because **only the best path is offered to the RIB.** Another path won the best-path selection on weight, local-pref, AS_PATH length, or one of the later tiebreakers, and that is the one that got installed.
+
+**Confirm it:**
+
+```
+r2# show ip bgp 3.3.3.3/32
+   Network          Next Hop            Metric LocPrf Weight Path
+*  3.3.3.3/32       10.0.23.3                0    100      0 65003 65002 i
+*>               10.0.12.1                0    200      0 65002 i
+```
+
+Two paths, both valid (`*`), but only one has `>`. Here the second path won on a higher LOCAL_PREF (200 vs 100). The first will never be in `show ip route`; that is correct behaviour, not a bug. If the *best* path is the one you expected, you are done. If the wrong path won, that is a policy question (weight / local-pref / MED), not an installation bug.
+
+## 3. A lower administrative distance beat it in the RIB
+
+This is the sneaky one, because the route looks completely healthy in BGP. The path is valid **and** best (`*>`) in `show ip bgp`, yet `show ip route` shows the prefix arriving via a *different* protocol. That happens when the same prefix is also learned from a protocol zebra trusts more. Administrative distance is the tiebreaker between protocols, and BGP does not always win:
+
+| Source | Distance |
+|---|---|
+| connected | 0 |
+| static | 1 |
+| eBGP | 20 |
+| OSPF | 110 |
+| iBGP | 200 |
+
+eBGP (20) beats OSPF, but **iBGP (200) loses to OSPF (110)**. So a prefix you learned over iBGP can be flagged best in the BGP table and still be shadowed in the RIB by an OSPF copy of the same prefix.
+
+**Confirm it:**
+
+```
+r2# show ip bgp 3.3.3.3/32        ← shows *>  (valid, best)
+r2# show ip route 3.3.3.3/32
+O>* 3.3.3.3/32 [110/20] via 10.0.12.1, eth1
+```
+
+BGP says best; the RIB says the route is there but learned from **OSPF** (`O`), not BGP (`B`). The BGP path is healthy, it just lost the RIB to a lower-distance source. **Fix:** usually nothing — prefer the IGP route if that is genuinely the better path. If you truly need the BGP path to win, that is a deliberate distance change, not a default.
+
+## 4. RIB-failure: zebra rejected the install
+
+If `show ip bgp` shows the prefix with an `r` flag, BGP picked it as best and *handed it to zebra*, but zebra declined to install it.
+
+**Confirm it:**
+
+```
+r2# show ip bgp
+   Network          Next Hop            Metric LocPrf Weight Path
+r> 3.3.3.3/32       10.0.12.1                0    100      0 65002 i
+```
+
+That `r` is `RIB-failure`. The most common reason is exactly cause #3 — another protocol already holds that prefix at a better distance — so the two findings often travel together. Check what is holding the slot:
+
+```
+r2# show ip route 3.3.3.3/32
+```
+
+If a connected, static, or lower-distance dynamic route owns it, that is your RIB-failure. Resolve the conflict (or accept the other route) and the flag clears.
+
+## 5. zebra is not running (the nuclear case)
+
+If **no** BGP routes are in the routing table — not just one prefix — suspect the plumbing. `bgpd` computes paths, but `zebra` installs them; if zebra is not running, the BGP table fills up while the routing table stays empty.
+
+**Confirm it:**
+
+```
+r2# show ip route
+```
+
+If you see connected routes but nothing from BGP at all, check the daemons:
+
+```bash
+$ vtysh -c "show daemons"
+```
+
+In a Containerlab/FRR setup this almost always traces back to the `daemons` file: `bgpd=yes` must be set, and `zebra` has to be running for anything to land in the kernel. **Fix:** enable the daemon and restart FRR so `bgpd` and `zebra` are both up.
+
+## Practice this
+
+The fastest way to stop second-guessing this symptom is to manufacture it on purpose. Spin up the **next-hop-self lab** below: it boots with a prefix that is present on the internal router but **INVALID** because its next-hop is unreachable — cause #1, live. Watch `show ip bgp 3.3.3.3/32` flag it invalid, confirm `show ip route` to the next-hop comes back empty, then fix it with one line of `next-hop-self` and see the prefix snap into the routing table. After you have driven the next-hop case by hand, the other four are just a matter of reading which flag FRR is showing you.
