@@ -47,6 +47,36 @@ const TOP = 16;
 const ROW_H = 80;
 const BLADE = "#4fe0c4";
 const LABEL = "#9aa3af";
+const LABEL_FS = 13;
+const LINE_H = 14;
+const LABEL_PAD = 12; // horizontal breathing room inside the pill
+// Rough average glyph width for the body font at LABEL_FS, used only to decide
+// when a label is too wide for the pill and must wrap onto a second line so it
+// never overflows the box.
+const CHAR_W = LABEL_FS * 0.5;
+
+/**
+ * Split a state label into at most two lines so it fits inside the pill. Short
+ * labels stay on one line; long ones (e.g. "Lowest IGP metric to NEXT_HOP")
+ * break at the word boundary that best balances the two lines.
+ */
+function wrapLabel(label: string): string[] {
+  if (label.length * CHAR_W <= PILL_W - LABEL_PAD) return [label];
+  const words = label.split(" ");
+  if (words.length < 2) return [label];
+  let best: [string, string] = [words[0], words.slice(1).join(" ")];
+  for (let i = 2; i < words.length; i++) {
+    const l1 = words.slice(0, i).join(" ");
+    const l2 = words.slice(i).join(" ");
+    if (
+      Math.max(l1.length, l2.length) <
+      Math.max(best[0].length, best[1].length)
+    ) {
+      best = [l1, l2];
+    }
+  }
+  return best;
+}
 
 function geom(s: SMState) {
   const cx = (s.lane ?? 0) === 1 ? SIDE_X : MAIN_X;
@@ -161,17 +191,25 @@ export function StateMachine({
                 stroke={hi ? BLADE : "#243042"}
                 strokeWidth={hi ? 1.75 : 1.5}
               />
-              <text
-                x={g.cx}
-                y={g.cy + 5}
-                textAnchor="middle"
-                fontFamily="var(--font-body)"
-                fontSize={14.5}
-                fontWeight={600}
-                fill={hi ? BLADE : "#e8e6df"}
-              >
-                {s.label}
-              </text>
+              {(() => {
+                const lines = wrapLabel(s.label);
+                const startY = g.cy + 5 - ((lines.length - 1) * LINE_H) / 2;
+                return (
+                  <text
+                    textAnchor="middle"
+                    fontFamily="var(--font-body)"
+                    fontSize={LABEL_FS}
+                    fontWeight={600}
+                    fill={hi ? BLADE : "#e8e6df"}
+                  >
+                    {lines.map((ln, i) => (
+                      <tspan key={i} x={g.cx} y={startY + i * LINE_H}>
+                        {ln}
+                      </tspan>
+                    ))}
+                  </text>
+                );
+              })()}
               {s.note ? (
                 <>
                   <path d={`M${g.right + 6} ${g.cy} l8 -4 l0 8 Z`} fill={BLADE} />

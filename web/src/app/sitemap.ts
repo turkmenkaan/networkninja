@@ -20,6 +20,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 
+  // The paths index, then every individual path (including "coming soon" ones,
+  // which are real indexable pages).
+  entries.push({
+    url: `${SITE_URL}/paths`,
+    lastModified: now,
+    changeFrequency: "weekly",
+    priority: 0.9,
+  });
+
   for (const pathId of listPathIds()) {
     entries.push({
       url: `${SITE_URL}/paths/${pathId}`,

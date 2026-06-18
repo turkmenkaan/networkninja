@@ -1,0 +1,64 @@
+# Reference: What You Should Have Seen
+
+This is an **observation lab**, so there's no puzzle to solve and no configuration to write. The starting config (`configs/agent/snmpd.conf`) is already the *complete, final* config: the agent boots with `snmpd` running, a read-only community `public` set, and friendly system-group values pre-staged. This page is a reference for the key things a healthy agent shows, so you can confirm what you observed.
+
+> Honesty note: this lab has **not yet been deployed**. Everything below (the exact text net-snmp prints, the package install, the `snmpd` startup, the interface addressing) is **schema-derived** from the SNMPv2c MIB definitions and net-snmp's documented behavior, not observed on a live run. It is flagged **TO-CONFIRM** until the verification pass runs it on a real Linux + Docker host. The example outputs are illustrative.
+
+## The agent responds: sysDescr
+
+```bash
+docker exec -it clab-snmp-observe-a-walk-nms snmpget -v2c -c public 10.0.0.11 1.3.6.1.2.1.1.1.0
+```
+
+```
+SNMPv2-MIB::sysDescr.0 = STRING: Linux agent 6.x.x ...
+```
+
+- A value coming back (not a timeout) means the agent is **reachable** and **`snmpd` is up**.
+- On an Alpine-based agent the description string includes `Linux`. (TO-CONFIRM: the exact sysDescr text is not yet observed on a live agent.)
+
+## The system group is readable
+
+```bash
+docker exec -it clab-snmp-observe-a-walk-nms snmpwalk -v2c -c public 10.0.0.11 1.3.6.1.2.1.1
+```
+
+```
+SNMPv2-MIB::sysDescr.0    = STRING: Linux agent ...
+SNMPv2-MIB::sysUpTime.0   = Timeticks: (12345) 0:02:03.45
+SNMPv2-MIB::sysContact.0  = STRING: noc@networkninja.example
+SNMPv2-MIB::sysName.0     = STRING: snmp-agent
+SNMPv2-MIB::sysLocation.0 = STRING: NetworkNinjas Lab Rack
+```
+
+- **`sysName.0`** = `snmp-agent`, **`sysLocation.0`** = `NetworkNinjas Lab Rack`, **`sysContact.0`** = `noc@networkninja.example`: the values pre-staged in `configs/agent/snmpd.conf`.
+- **`sysUpTime.0`** is a `Timeticks` counter (hundredths of a second since `snmpd` started); it climbs over time.
+- Each object is `.0`-indexed because the system group is **scalar**: one of each per device.
+
+## The interface table is readable
+
+```bash
+docker exec -it clab-snmp-observe-a-walk-nms snmpwalk -v2c -c public 10.0.0.11 1.3.6.1.2.1.2.2.1.2
+```
+
+```
+IF-MIB::ifDescr.1 = STRING: lo
+IF-MIB::ifDescr.2 = STRING: eth1
+```
+
+- The interface table is **tabular**: the `ifDescr` column OID (`1.3.6.1.2.1.2.2.1.2`) repeats once per interface, with the **ifIndex** appended (`.1`, `.2`).
+- More than zero rows means the table is populated and the tabular MIB is readable. (TO-CONFIRM: the exact interfaces and their indexes are not yet observed on a live agent.)
+
+## The objectives
+
+All three checks are read-only confirmations that a healthy, answering agent exists to observe. Each assertion is **schema-derived / TO-CONFIRM** (see `tasks.yaml`):
+
+1. `agent-responds`: `snmpget -Oqv ... 1.3.6.1.2.1.1.1.0` wrapped as `{value}` contains `Linux`.
+2. `system-group-readable`: `snmpget -Oqv ... 1.3.6.1.2.1.1.5.0` (sysName.0) wrapped as `{value}` contains `snmp-agent`.
+3. `interface-table-readable`: walking `ifDescr` (`1.3.6.1.2.1.2.2.1.2`), counting rows wrapped as `{count}`, is greater than 0.
+
+## Note
+
+Because this is a guided observation lab, there are intentionally **no separate `solution/` config files**: the starting config in `configs/agent/snmpd.conf` already *is* the full configuration. Nothing about the lab is meant to be changed; the goal is simply to read a live agent fluently.
+
+The runtime details that still need a real deploy to confirm: the `alpine:3.22` + net-snmp install, the `snmpd` startup, the eth1 IP assignment on both nodes, and every `tasks.yaml` JSON path. See the TO-CONFIRM block at the top of `topology.clab.yml` and the per-assertion flags in `tasks.yaml`.

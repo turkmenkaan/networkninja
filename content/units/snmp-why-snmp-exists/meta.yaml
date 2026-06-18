@@ -1,0 +1,12 @@
+id: snmp-why-snmp-exists
+type: lesson
+title: "Why SNMP Exists"
+summary: "How one protocol lets a single console watch the health of hundreds of network devices, and why monitoring at scale needs the manager/agent model SNMP invented."
+path: snmp-fundamentals
+module: snmp-foundations
+difficulty: beginner
+estimated_minutes: 12
+prerequisites: []
+tags: [snmp, fundamentals, monitoring]
+status: published
+version: 1

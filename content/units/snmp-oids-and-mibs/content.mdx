@@ -1,0 +1,91 @@
+# OIDs and MIBs: How SNMP Names Things
+
+You already know the cast: a manager polls an agent, the agent answers. But poll for *what*, exactly? If you want a router's uptime, you cannot just ask for "uptime" and hope it understands. SNMP runs across thousands of vendors and device types, so it needs a name for every readable value that means the same thing everywhere, with zero ambiguity. One value, one globally unique address. That address is an **OID**.
+
+## Everything lives in one tree
+
+An **OID** (Object Identifier) is a path through a single, globally shared tree. Every readable thing an SNMP agent exposes (uptime, an interface's name, a temperature sensor) sits somewhere in that tree, and you name it by spelling out the path from the root down to it.
+
+The branches near the top are historical and frankly a little silly, but you only have to learn them once. From the root you walk down `iso(1)` to `org(3)` to `dod(6)` to `internet(1)`. That gets you to `1.3.6.1`, the prefix under which essentially everything you will ever touch lives. From there, two branches matter:
+
+- `mgmt(2)` then `mib-2(1)`, which is `1.3.6.1.2.1`. This is where the standard, vendor-neutral objects live: the system group, the interface table, IP and TCP stats, and so on.
+- `private(4)` then `enterprises(1)`, which is `1.3.6.1.4.1`. This is where each vendor hangs its own custom objects under a number assigned to them (Cisco is `9`, for example). You will visit it eventually; for now just know it is where the non-standard stuff lives.
+
+<HierarchyTree
+  eyebrow="The OID tree"
+  nodes={[
+    { id: "iso", label: "iso", sublabel: "1", tier: 0 },
+    { id: "org", label: "org", sublabel: "3", tier: 1 },
+    { id: "dod", label: "dod", sublabel: "6", tier: 2 },
+    { id: "internet", label: "internet", sublabel: "1", tier: 3 },
+    { id: "mgmt", label: "mgmt", sublabel: "2", tier: 4 },
+    { id: "private", label: "private", sublabel: "4", tier: 4, muted: true },
+    { id: "mib2", label: "mib-2", sublabel: "1  (1.3.6.1.2.1)", tier: 5 },
+    { id: "enterprises", label: "enterprises", sublabel: "1  (1.3.6.1.4.1)", tier: 5, w: 220, muted: true },
+    { id: "system", label: "system", sublabel: "1", tier: 6 },
+    { id: "interfaces", label: "interfaces", sublabel: "2", tier: 6 },
+  ]}
+  edges={[
+    { from: "iso", to: "org" },
+    { from: "org", to: "dod" },
+    { from: "dod", to: "internet" },
+    { from: "internet", to: "mgmt" },
+    { from: "internet", to: "private", faint: true },
+    { from: "mgmt", to: "mib2" },
+    { from: "private", to: "enterprises", faint: true },
+    { from: "mib2", to: "system" },
+    { from: "mib2", to: "interfaces" },
+  ]}
+  tierLabels={{ 6: "standard groups under mib-2" }}
+  caption={<>Read an OID top to bottom: <code>1.3.6.1.2.1</code> is <code>mib-2</code>, and the standard groups (system, interfaces) hang directly under it. Vendor MIBs live off to the side under <code>enterprises</code> (1.3.6.1.4.1).</>}
+/>
+
+## Numbers for the agent, names for you
+
+So far OIDs look like phone numbers nobody could memorize. `1.3.6.1.2.1.1.1.0` is a real, valid OID, and it is also completely unreadable. Here is the same object, named:
+
+```
+1.3.6.1.2.1.1.1.0  ==  SNMPv2-MIB::sysDescr.0
+```
+
+Both refer to the exact same thing: a device's description string. The agent only ever speaks in numbers; that dotted path is what actually travels on the wire. The human-friendly name is a translation, and the dictionary that does the translating is a **MIB**.
+
+A **MIB** (Management Information Base) is delivered as MIB *modules*, which are plain text files. Each module defines a set of objects and, for every one, records its numeric OID, its data type (integer, string, counter, timestamp), and its access (read-only, read-write). Load the right MIB files into your tools and `1.3.6.1.2.1.1.1.0` turns into `sysDescr.0`. Skip them and everything still works, you just stare at numbers. The agent does not need the MIB files at all; they are for you and your tooling.
+
+## Scalars and tables
+
+Objects come in two flavors, and telling them apart is the single most useful skill in this lesson.
+
+A **scalar** object has exactly one instance. There is one device description, one system name, one uptime. To actually read a scalar you append a `.0` instance suffix, which is why every example above ends in `.0`. `sysName.0` means "the one and only sysName."
+
+A **tabular** object is a column in a table, and a table has many rows. You cannot just read "the interface description," because a switch has many interfaces. Instead, each row is identified by an **index**, and you read a specific cell by appending that index. The canonical example is the interface table, `ifTable`, indexed by `ifIndex`:
+
+```
+ifDescr.1  ->  description of interface index 1   (e.g. "eth0")
+ifDescr.2  ->  description of interface index 2   (e.g. "eth1")
+ifDescr.3  ->  description of interface index 3   (e.g. "eth2")
+```
+
+`ifDescr` is one column; the `.1`, `.2`, `.3` pick the row. Want the operational status of those same interfaces? Same indexes, different column: `ifOperStatus.1`, `ifOperStatus.2`. So the suffix on an OID is never decoration. On a scalar it is always `.0`; on a table object it is the row index. When you start walking real devices in the labs, half of reading the output is just recognizing which column and which row you are looking at.
+
+## The MIBs you will actually meet
+
+Two standard MIB modules cover most of what these labs poll:
+
+- **`SNMPv2-MIB`** defines the **system group** under `1.3.6.1.2.1.1`: the device basics. `sysDescr` (what it is), `sysObjectID` (vendor identity), `sysUpTime` (time since the agent started), `sysContact`, `sysName`, and `sysLocation`. All scalars, all read with a `.0`.
+- **`IF-MIB`** defines the **interface table**, `ifTable`, under `1.3.6.1.2.1.2`: one row per interface, with columns like `ifDescr`, `ifOperStatus`, and the traffic counters `ifInOctets` and `ifOutOctets`. This is the table monitoring systems live in.
+
+A few real OID and name pairs to anchor it all:
+
+```
+sysDescr.0    =  1.3.6.1.2.1.1.1.0     (device description, scalar)
+sysUpTime.0   =  1.3.6.1.2.1.1.3.0     (agent uptime, scalar)
+ifNumber.0    =  1.3.6.1.2.1.2.1.0     (count of interfaces, scalar)
+ifDescr.1     =  1.3.6.1.2.1.2.2.1.2.1 (description of interface 1, table cell)
+```
+
+Notice `ifNumber` is a scalar (`.0`, there is one interface count), while `ifDescr` is tabular (`.1`, a specific row). Same MIB, two shapes, and the suffix is what tells you which.
+
+## What's next
+
+You can now read an OID as a path through one global tree, flip it between numeric and human form with a MIB, and tell a scalar (`.0`) from a table cell (a row index). That is the vocabulary every SNMP query is written in. Next, in `snmp-versions-and-communities`, we leave the data model and look at the protocol versions: how v1, v2c, and v3 differ, and why a community string is the weakest "password" you will ever meet.

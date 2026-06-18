@@ -6,6 +6,7 @@ import {
 } from "@/lib/content/paths";
 import { Logo } from "@/components/Logo";
 import { ArrowIcon, FlaskIcon, BookIcon } from "@/components/ui";
+import { AvailablePathCard, ComingSoonPathCard } from "@/components/PathCard";
 import { NotifySignup } from "@/components/NotifySignup";
 import { JsonLd } from "@/components/JsonLd";
 import { Faq } from "@/components/Faq";
@@ -39,14 +40,18 @@ export default function HomePage() {
   const stats = path ? pathStats(path) : null;
   const moduleCount = path?.modules.length ?? 0;
 
-  // Every other path (e.g. OSPF) is advertised as "coming soon" until its units
-  // are authored. Driven by the manifest directory so new paths appear here
-  // automatically without touching this file.
-  const upcomingPaths = listPathIds()
+  // Other paths beyond the featured one, driven by the manifest directory so
+  // new paths appear here automatically. A path with at least one live unit is
+  // shown as available; only paths with nothing published yet are "coming soon".
+  const otherPaths = listPathIds()
     .filter((id) => id !== "bgp-fundamentals")
     .map((id) => loadPath(id))
     .filter((p): p is NonNullable<typeof p> => p != null)
     .map((p) => ({ path: p, stats: pathStats(p) }));
+  const alsoAvailable = otherPaths
+    .filter((e) => e.stats.published > 0)
+    .sort((a, b) => b.stats.published - a.stats.published);
+  const upcomingPaths = otherPaths.filter((e) => e.stats.published === 0);
 
   const orgId = `${SITE_URL}/#organization`;
   const structuredData = {
@@ -121,7 +126,7 @@ export default function HomePage() {
                 <ArrowIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
               <Link
-                href="#paths"
+                href="/paths"
                 className="inline-flex items-center gap-2 rounded-xl border border-ink-line bg-ink-raised px-5 py-3 font-medium text-paper transition-colors hover:bg-ink-glow"
               >
                 See Learning Paths
@@ -213,6 +218,20 @@ export default function HomePage() {
         </section>
       )}
 
+      {/* ───────────────────── Also available ───────────────────── */}
+      {alsoAvailable.length > 0 && (
+        <section className="pb-8">
+          <h2 className="font-display text-sm font-semibold uppercase tracking-[0.2em] text-blade-dim">
+            Also available
+          </h2>
+          <div className="mt-8 grid gap-5 md:grid-cols-2">
+            {alsoAvailable.map(({ path: p, stats: s }) => (
+              <AvailablePathCard key={p.id} path={p} stats={s} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* ───────────────────── Upcoming paths ───────────────────── */}
       {upcomingPaths.length > 0 && (
         <section className="pb-8">
@@ -221,15 +240,7 @@ export default function HomePage() {
           </h2>
           <div className="mt-8 grid gap-5 md:grid-cols-2">
             {upcomingPaths.map(({ path: p, stats: s }) => (
-              <ComingSoonPathCard
-                key={p.id}
-                id={p.id}
-                title={p.title}
-                summary={p.summary}
-                moduleCount={p.modules.length}
-                plannedCount={s.published + s.planned}
-                networkOs={p.network_os}
-              />
+              <ComingSoonPathCard key={p.id} path={p} stats={s} />
             ))}
           </div>
         </section>
@@ -312,52 +323,6 @@ function Step({
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-paper-muted">{body}</p>
     </div>
-  );
-}
-
-function ComingSoonPathCard({
-  id,
-  title,
-  summary,
-  moduleCount,
-  plannedCount,
-  networkOs,
-}: {
-  id: string;
-  title: string;
-  summary: string;
-  moduleCount: number;
-  plannedCount: number;
-  networkOs?: string;
-}) {
-  return (
-    <Link
-      href={`/paths/${id}`}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-dashed border-ink-line bg-ink-raised/40 p-6 transition-colors hover:border-blade/40 hover:bg-ink-raised/60"
-    >
-      <div className="flex items-center justify-between">
-        <span className="inline-flex items-center gap-2 rounded-full border border-ember/30 bg-ember/10 px-2.5 py-1 font-mono text-[0.68rem] uppercase tracking-[0.14em] text-ember">
-          Coming soon
-        </span>
-        <ArrowIcon className="h-4 w-4 text-paper-faint transition-all group-hover:translate-x-0.5 group-hover:text-blade" />
-      </div>
-      <h3 className="mt-4 font-display text-xl font-bold tracking-tight text-paper transition-colors group-hover:text-blade">
-        {title}
-      </h3>
-      <p className="mt-2 flex-1 text-sm leading-relaxed text-paper-muted">
-        {summary}
-      </p>
-      <div className="mt-4 flex flex-wrap gap-2 font-mono text-xs text-paper-faint">
-        <span className="rounded-full border border-ink-line px-2.5 py-1">
-          {moduleCount} modules · {plannedCount} units planned
-        </span>
-        {networkOs && (
-          <span className="rounded-full border border-ink-line px-2.5 py-1">
-            {networkOs}
-          </span>
-        )}
-      </div>
-    </Link>
   );
 }
 

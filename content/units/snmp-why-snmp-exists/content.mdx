@@ -1,0 +1,73 @@
+# Why SNMP exists
+
+Picture the network you are responsible for. Not five devices, not fifty: hundreds, maybe thousands. Switches in wiring closets, routers at the edge, firewalls, a rack of servers, the printers nobody admits to owning, and the UPS quietly keeping it all alive. Now answer a simple question for every single one of them, right now: is it up? Are any interfaces throwing errors? How much traffic is it pushing? Is the CPU melting? Is it running out of memory?
+
+You cannot SSH into a thousand boxes to find out. By the time you logged into the last one, the answers from the first would be stale. Manual checking does not scale, and "I'll notice when something breaks" is not a monitoring strategy, it is an apology you write later. What you actually need is one console that asks every device the same handful of questions, over and over, automatically, forever.
+
+That console is the entire reason the Simple Network Management Protocol exists.
+
+## One protocol almost everything speaks
+
+SNMP has been the lingua franca of network monitoring for decades, and its superpower is boring in the best way: nearly everything speaks it. Switches and routers, firewalls, load balancers, servers, printers, environmental sensors, the UPS under the desk. If a device has a management plane at all, odds are very good it answers SNMP. That universality is the whole point. Instead of learning a different interrogation method for every vendor and every box, you learn one protocol and point it at all of them.
+
+## The manager and the agent
+
+SNMP splits the world into two roles, and once you see them the rest of the protocol falls into place.
+
+A **manager** (you will also hear it called an **NMS**, for Network Management System) is the central brain: the one console that does the watching. It is the thing asking the questions.
+
+An **agent** is a small piece of software running on each managed device. It knows how to read that device's own internal state (interface counters, CPU load, uptime, temperature) and hand those values back when asked. Every switch, router, and server you want to watch runs an agent.
+
+The relationship is delightfully one-directional: the manager asks, the agent answers. One manager can interrogate a whole network of agents.
+
+<ASTopology
+  eyebrow="One console, many devices"
+  nodeShape="router"
+  nodes={[
+    { id: "nms", name: "NMS", col: 1, row: 0 },
+    { id: "agent1", name: "Switch", col: 0, row: 1 },
+    { id: "agent2", name: "Router", col: 1, row: 1 },
+    { id: "agent3", name: "Firewall", col: 2, row: 1 },
+  ]}
+  links={[
+    { from: "nms", to: "agent1" },
+    { from: "nms", to: "agent2" },
+    { from: "nms", to: "agent3" },
+  ]}
+  legend="SNMP poll: manager asks, agent answers"
+  caption={<>One manager (the NMS) fans out to every device. Each device runs an <strong>agent</strong> that exposes its own health, and the manager polls them all on a schedule.</>}
+/>
+
+## Polling: asking the same questions on a schedule
+
+The everyday rhythm of SNMP is **polling**. The manager periodically reaches out to each agent and GETs the values it cares about: interface octet counters, operational status, system uptime, and so on. Then it waits an interval (often somewhere around 30 to 60 seconds in practice) and does it all again. Poll, wait, poll, wait. That steady drumbeat is how a monitoring system turns "is everything okay?" into a continuous answer instead of a one-time guess.
+
+These polls ride over **UDP, on port 161**. SNMP is deliberately "read-mostly": the overwhelming majority of traffic is the manager reading values it has no intention of changing. There is a write operation, **SET**, which lets a manager change a value on the agent, but it is used far less often and carries real risk (you are reconfiguring a live device from across the network), so most monitoring deployments keep agents read-only and leave SET alone.
+
+## Poll versus trap
+
+Polling has one built-in limitation: you only learn about a problem on the next poll. If a link goes down two seconds after a poll completes, you stay blissfully unaware for the rest of the interval. For genuinely urgent events, waiting is not good enough.
+
+That is what a **trap** is for. A trap flips the direction: instead of the manager pulling, the agent **pushes** an unsolicited alert the instant something noteworthy happens. A link drops, a fan fails, the device reboots, and the agent fires off a trap to the manager immediately, without being asked. Traps travel over **UDP port 162** (note: a different port from polls).
+
+So hold both ideas in your head:
+
+- **Polling** is the manager pulling values on a schedule, over UDP 161. Great for trends, counters, and "is it still up?"
+- **Traps** are the agent pushing an alert the moment an event occurs, over UDP 162. Great for "tell me the *instant* this breaks."
+
+You go deep on traps and their acknowledged cousin, informs, in a later module. For now, just know SNMP does both: scheduled asking and event-driven telling.
+
+## Where SNMP sits (an honest map)
+
+SNMP is not the only way to watch a network, and it is worth being straight about where it fits.
+
+- **SNMP** is the ubiquitous baseline for device metrics and up/down monitoring. Its strength is universality: it is the one thing almost everything supports.
+- **Syslog** carries event logs (the messages a device generates about what it is doing). It complements SNMP rather than competing with it.
+- **Flow data** (NetFlow, sFlow) describes *who is talking to whom* and how much, which SNMP's interface counters cannot tell you on their own.
+- **Streaming telemetry** is the newer approach, where devices push structured data continuously instead of waiting to be polled. It is richer and faster, but nowhere near as universally supported.
+
+SNMP is not the flashiest tool on that list, and it does not need to be. It is the dependable common denominator that runs on the gear you already have, which is exactly why it has outlasted every protocol that was supposed to replace it. You reach for the others to fill in what SNMP does not cover, not to throw SNMP away.
+
+## What's next
+
+So that is the why. You cannot hand-check a thousand devices, so SNMP gives you one manager that polls an agent on every box, pulls health on a schedule over UDP 161, and gets a trap pushed back over UDP 162 the moment something breaks. Next we get concrete about the architecture: the manager, the agent, and the MIB they share, plus the PDU message types (GET, GETNEXT, GETBULK, SET, RESPONSE, and TRAP) that carry the whole conversation, in `snmp-manager-agent-and-pdus`.

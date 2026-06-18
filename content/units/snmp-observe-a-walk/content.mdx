@@ -1,0 +1,134 @@
+# Observe an SNMP Walk
+
+You've read about the manager, the agent, the MIB tree, and community strings. In this lab you don't configure any of it; the agent is **already answering**. Two containers boot on a small management LAN: an agent running `snmpd` with a read-only community already set, and a manager with the `snmp*` client tools installed. Your job is to **ask the agent questions** and learn to read what comes back.
+
+Think of it as a guided tour of a device that's already wired for monitoring. You walk up, point a poller at it, and start reading objects out of the MIB by hand. When you can do that fluently, configuring your own agent in the next module is just the other half of the conversation.
+
+## Topology
+
+<ASTopology
+  nodeShape="router"
+  eyebrow="Lab topology"
+  nodes={[
+    { id: "nms", name: "nms", sublabel: ["manager / poller", "eth1 10.0.0.10/24"], col: 0, row: 0 },
+    { id: "agent", name: "agent", sublabel: ["snmpd", "eth1 10.0.0.11/24"], col: 1, row: 0 },
+  ]}
+  links={[{ from: "nms", to: "agent" }]}
+  legend="Management LAN 10.0.0.0/24 (nms .10, agent .11, on eth1)"
+  caption={<>The manager (<strong>nms</strong>) polls the managed device (<strong>agent</strong>) over UDP 161. The agent boots with <strong>snmpd already running</strong> and a read-only community <code>public</code> configured, so there is a live MIB to read the moment the lab is up.</>}
+/>
+
+The `agent` node boots fully configured: `snmpd` is running, a read-only community `public` is set, and friendly system values (sysName, sysLocation, sysContact) are pre-staged so the walk returns recognizable answers. The `nms` node just has the client tools. Nothing here is yours to change; you only ask.
+
+## Deploy the lab
+
+Download the lab and unzip it (the download includes the topology and the agent config). From inside the unzipped folder, run:
+
+```bash
+containerlab deploy -t topology.clab.yml
+```
+
+That boots both nodes. On first boot each node installs net-snmp from the Alpine package repos and the agent starts `snmpd`, so give it a few seconds before polling. Everything below runs from the manager, so drop into a shell on `nms`:
+
+```bash
+docker exec -it clab-snmp-observe-a-walk-nms sh
+```
+
+Every command from here is a read. You never log into the agent and you never change a thing; you simply query it across the wire.
+
+## Step 1: Ask for one object: sysDescr
+
+Start with the single most common SNMP question: "what are you?" That's `sysDescr.0`, the first object in the system group, OID `1.3.6.1.2.1.1.1.0`. Use `snmpget`, which fetches exactly one object:
+
+```bash
+docker exec -it clab-snmp-observe-a-walk-nms snmpget -v2c -c public 10.0.0.11 1.3.6.1.2.1.1.1.0
+```
+
+Read the flags like a sentence: `-v2c` means SNMP version 2c, `-c public` is the read-only community (the weak plaintext "password" you met in `snmp-versions-and-communities`), `10.0.0.11` is the agent, and the OID is what you want. You'll get back something like:
+
+```
+SNMPv2-MIB::sysDescr.0 = STRING: Linux agent 6.x.x ...
+```
+
+The agent answered, so two things are now true: it's reachable on the LAN, and `snmpd` is up and serving the MIB. The value itself is a free-text description of the device; on this Alpine-based agent it starts with `Linux`. That single successful GET is the whole point of step 1: there is a living agent on the other end, and it speaks SNMP.
+
+> If you'd rather see just the value with no OID or type noise, add `-Oqv` (quick, value-only): `snmpget -Oqv -v2c -c public 10.0.0.11 1.3.6.1.2.1.1.1.0`. That's the same flag the auto-grader uses under the hood.
+
+## Step 2: Walk the system group
+
+A single GET is fine when you know the exact object. But often you want to sweep a whole branch of the tree. That's `snmpwalk`: it starts at an OID and uses GETNEXT under the hood to march through every object beneath it. Walk the entire **system** group (OID `1.3.6.1.2.1.1`, the `system` subtree of mib-2):
+
+```bash
+docker exec -it clab-snmp-observe-a-walk-nms snmpwalk -v2c -c public 10.0.0.11 1.3.6.1.2.1.1
+```
+
+You'll see a handful of scalar objects, each `.0`-indexed because there's exactly one of each per device:
+
+```
+SNMPv2-MIB::sysDescr.0    = STRING: Linux agent ...
+SNMPv2-MIB::sysObjectID.0 = OID: ...
+SNMPv2-MIB::sysUpTime.0   = Timeticks: (12345) 0:02:03.45
+SNMPv2-MIB::sysContact.0  = STRING: noc@networkninja.example
+SNMPv2-MIB::sysName.0     = STRING: snmp-agent
+SNMPv2-MIB::sysLocation.0 = STRING: NetworkNinjas Lab Rack
+```
+
+Pick out the values that came straight from the agent's config:
+
+- **`sysName.0`** reads `snmp-agent`: the name set in the agent's `snmpd.conf`. Seeing your configured name come back proves you're reading the system group off this specific device.
+- **`sysLocation.0`** and **`sysContact.0`** are the human-friendly "where is it / who owns it" strings, also pre-staged.
+- **`sysUpTime.0`** is a `Timeticks` counter (hundredths of a second since the agent started). Run the walk again in a minute and watch it climb.
+
+Notice that net-snmp printed friendly names like `SNMPv2-MIB::sysName.0` even though you asked by numeric OID `1.3.6.1.2.1.1`. That name-vs-number duality is exactly the OID/MIB idea from `snmp-oids-and-mibs`: the dotted numbers are what travels on the wire, and the MIB module is the dictionary that translates them into readable names. You can walk by name too: `snmpwalk -v2c -c public 10.0.0.11 system` reaches the same branch.
+
+## Step 3: Walk the interface table
+
+The system group is all **scalar** objects, one of each. The real power of the MIB shows up with **tabular** objects, where there's one row per "thing." The classic example is the interface table. Walk the `ifDescr` column (OID `1.3.6.1.2.1.2.2.1.2`), which names each interface:
+
+```bash
+docker exec -it clab-snmp-observe-a-walk-nms snmpwalk -v2c -c public 10.0.0.11 1.3.6.1.2.1.2.2.1.2
+```
+
+You'll get one line per interface on the agent, something like:
+
+```
+IF-MIB::ifDescr.1 = STRING: lo
+IF-MIB::ifDescr.2 = STRING: eth1
+```
+
+Look closely at the **trailing number** on each OID: `ifDescr.1`, `ifDescr.2`. That last digit is the **ifIndex**, the row index that distinguishes one interface from another. A tabular object isn't `.0`-indexed like a scalar; instead the same column OID repeats once per row, with the index appended. To read a different column for the same interfaces, you change the column OID and keep the same indexes. For example, `ifOperStatus` (the up/down state column) lives at `1.3.6.1.2.1.2.2.1.8`, and `ifOperStatus.2` would tell you whether `eth1` is up.
+
+> This indexing is the whole trick behind reading counters later: ifInOctets.2 and ifOutOctets.2 are the byte counters for that same eth1 row. You'll turn those into traffic rates in the `snmp-interface-table` lab.
+
+## Verify
+
+This lab has nothing to fix; these objectives just confirm you have a healthy, answering agent in front of you to read.
+
+✅ **Objective 1:** the agent **responds**: `snmpget` of `sysDescr.0` (`1.3.6.1.2.1.1.1.0`) returns a value containing `Linux`, proving the agent is reachable and `snmpd` is up.
+
+✅ **Objective 2:** the **system group is readable**: `sysName.0` (`1.3.6.1.2.1.1.5.0`) returns the configured `snmp-agent`.
+
+✅ **Objective 3:** the **interface table is readable**: walking `ifDescr` (`1.3.6.1.2.1.2.2.1.2`) returns at least one interface row.
+
+## Troubleshooting
+
+If a poll times out instead of answering, work outward from the wire:
+
+- **Give it a moment.** On first boot each node installs net-snmp from the package repos and the agent starts `snmpd`. If you polled immediately, the install or daemon may not be ready yet; wait a few seconds and retry.
+- **If the agent does not answer at all, `snmpd` may not have started.** Check it on the agent: `docker exec -it clab-snmp-observe-a-walk-agent ps | grep snmpd` should show the daemon running. If it isn't there, the agent's `snmpd` failed to start (look for an install or config error in `docker logs clab-snmp-observe-a-walk-agent`).
+- **Confirm reachability** with a ping across the LAN: `docker exec -it clab-snmp-observe-a-walk-nms ping -c1 10.0.0.11`.
+
+## Tear down
+
+```bash
+containerlab destroy -t topology.clab.yml
+```
+
+## What you learned
+
+- **`snmpget`** fetches one named object. `sysDescr.0` (`1.3.6.1.2.1.1.1.0`) is the universal "what are you?" question, and a successful answer proves the agent is reachable and serving its MIB.
+- **`snmpwalk`** sweeps a whole branch of the tree using GETNEXT. Walking the **system** group surfaces the scalar objects (sysName, sysLocation, sysContact, sysUpTime), each `.0`-indexed because there's one per device, and the ones you saw came straight from the agent's `snmpd.conf`.
+- **Tabular** objects like the **interface table** repeat a column OID once per row, with the **ifIndex** appended (`ifDescr.1`, `ifDescr.2`). That index is how SNMP tells one interface from another, and it's the foundation for reading per-interface counters later.
+- net-snmp shows friendly **MIB names** (`SNMPv2-MIB::sysName.0`) for the **numeric OIDs** that actually travel on the wire: the dictionary lookup from `snmp-oids-and-mibs`, made visible.
+
+**Next:** you've now *read* an agent that someone else configured. Time to stand one up yourself. Continue to **Module 2** with `snmp-enable-the-agent`, where you write the `snmpd.conf` from scratch and prove the manager can poll it.

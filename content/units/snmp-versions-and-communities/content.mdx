@@ -1,0 +1,61 @@
+# Versions and community strings
+
+You now know how to name an object in the MIB tree. Before you actually go ask a device for one, there is a fork in the road you cannot avoid: which version of SNMP are you speaking, and how does the agent decide you are allowed to ask? Pick wrong and you either get nothing back, or you hand your device data to anyone listening on the wire. SNMP has shipped three versions over its life, and the differences between them come down to two things: what the protocol can do, and how much it trusts you. Let's sort them out.
+
+## Three versions, honestly
+
+SNMP did not arrive fully formed. It grew up in public, and all three versions are still out there in the wild.
+
+- **v1 (1988):** the original. It works, and for a long time it was all there was. But it has clumsy error handling and no way to pull a large table in one shot, so a big `snmpwalk` means a long sequence of one-at-a-time requests. These days it is mostly legacy: you will meet it on old gear, but you would not choose it for anything new.
+- **v2c:** the workhorse of monitoring today. The "c" stands for community-based, which is the tell. v2c adds **GETBULK** (grab a whole chunk of a table in a single request, instead of crawling it row by row) and far better error reporting. What it does *not* change is security: it keeps v1's community-string model exactly as it was. When a tool says "just give me the metrics," this is almost always what it speaks.
+- **v3:** the grown-up version. It adds the User-based Security Model (USM): real per-user authentication, optional encryption, and a notion of security levels. It exists for one reason, to close the hole that v1 and v2c leave wide open. We will motivate that hole below and save the actual USM setup for the v3 module.
+
+Here is the same story as a table, since "what changed when" is exactly what tables are for:
+
+| Version | Bulk retrieval? | Security model | Encryption? | Typical use |
+|---------|-----------------|----------------|-------------|-------------|
+| v1 | No | Community string (plaintext) | No | Legacy gear only |
+| v2c | Yes (GETBULK) | Community string (plaintext) | No | Everyday monitoring |
+| v3 | Yes (GETBULK) | User-based (USM): auth per user | Yes (optional) | Untrusted paths, accountability |
+
+Notice the pattern: v2c fixes v1's *capability* gaps but inherits its *security* model wholesale. That inheritance is the whole drama of this lesson.
+
+## Community strings: the password that isn't one
+
+In v1 and v2c, the agent's idea of "who are you" is a **community string**: a shared secret, a single word, that the manager includes in every request. The agent checks the word against its config. Match, and you are in. That is the entire access-control story.
+
+Two communities show up everywhere by convention:
+
+- `public` is the default **read-only (RO)** community. An RO community lets a manager *read* objects: poll counters, fetch `sysName`, walk the interface table.
+- `private` is the default **read-write (RW)** community. An RW community can do everything RO can, *plus* issue SET operations, which actually change the device's configuration.
+
+That RO-versus-RW split matters more than it looks. A leaked read-only string is an information problem. A leaked read-write string is a "someone just changed my device" problem. Treat them accordingly.
+
+```bash
+# An agent's snmpd.conf, conceptually:
+rocommunity  s3cret-metrics-ro      # read-only: polling allowed
+rwcommunity  even-more-s3cret-rw    # read-write: SET allowed (use sparingly!)
+```
+
+And the rule that follows from all of this: **the defaults `public` and `private` must never survive into production.** They are the first two strings any attacker tries, and they are documented in every SNMP tutorial on earth (including this one). Rename them to something nobody will guess, and hand out the RW community to almost nothing.
+
+## The weakness, stated plainly
+
+Here is the part you cannot un-see. With v1 and v2c, the community string travels in **clear text** inside the UDP payload of every single request. It is not hashed. It is not encrypted. It is just sitting there in the packet.
+
+So anyone who can capture that traffic, a compromised host on the LAN, someone tapping a span port, a curious neighbor on a shared segment, can read the community string straight off the wire and then read everything your device will tell that community. They do not even need to capture anything if you left `public` in place; they can just *guess*. And if it is an RW community that leaks, they are not limited to reading: they can SET, and reconfigure your gear.
+
+There is no encryption here, and no real per-user identity. A community string is a password shared by everyone who uses it, sent in the open, with no way to tell one caller from another. That is precisely the hole **v3** closes with USM: genuine authentication tied to a user, and privacy (encryption) so the payload is not readable even when it is captured.
+
+## So which one do you actually use?
+
+Practical guidance, and it is refreshingly simple:
+
+- For internal monitoring on a network **you control**, use **v2c with a non-default RO community**. You get GETBULK and clean errors, the community never crosses untrusted ground, and read-only means a leak is embarrassing rather than catastrophic. This is the pragmatic default for a management LAN.
+- The moment the data crosses ground you do **not** trust, or you need to know *who* made a change and not just *that the password was right*, reach for **v3**. Authentication and encryption stop being optional the second packets leave the safe zone.
+
+In other words: v2c for the easy, contained case; v3 when the stakes or the exposure go up. The rest of this path leans on exactly that progression.
+
+## What's next
+
+You have the lay of the land: three versions, one weak-but-everywhere community model, and a clear reason v3 exists. Time to stop reading about it and watch it work. In `snmp-observe-a-walk` you will point a manager at a live agent over v2c, `snmpget` a single object, and `snmpwalk` the system and interface trees, your first real conversation with an SNMP agent.

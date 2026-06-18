@@ -1,0 +1,60 @@
+# Lab name -> containers are named clab-snmp-observe-a-walk-<node>.
+#
+# ============================ TO-CONFIRM ============================
+# This is the repo's FIRST net-snmp lab and it has NOT yet been run
+# through a real `containerlab deploy`. Everything in this file that
+# touches the runtime is best-effort and must be confirmed on a Linux +
+# Docker host during the verification pass:
+#
+#   1. IMAGE: alpine:3.22 is a verified tag, but the base image does NOT
+#      ship net-snmp. Both nodes `apk add` it at boot (needs network/CDN
+#      reachability inside the lab). TO-CONFIRM.
+#   2. INSTALL: package names `net-snmp` (the snmpd daemon) and
+#      `net-snmp-tools` (the snmp* client binaries) are the Alpine names
+#      as of this writing. Confirm they resolve and pull cleanly. TO-CONFIRM.
+#   3. SNMPD STARTUP: the agent runs `snmpd` in the foreground reading the
+#      bound /etc/snmp/snmpd.conf. Confirm it actually starts and answers
+#      on UDP 161. TO-CONFIRM.
+#   4. IP ASSIGNMENT: eth1 addresses are assigned via `ip addr add` in the
+#      boot command (containerlab brings the veth up, we set the address).
+#      Confirm both nodes can ping across 10.0.0.0/24. TO-CONFIRM.
+#
+# If you change the approach (entrypoint script, image with net-snmp
+# pre-baked, etc.), update content.mdx's troubleshooting note too.
+# ===================================================================
+
+name: snmp-observe-a-walk
+
+topology:
+  nodes:
+    # nms = the manager / poller. Runs the snmp* client tools.
+    nms:
+      kind: linux
+      image: alpine:3.22
+      # Install the client tools, address eth1, then idle so the container
+      # stays up for the learner to `docker exec` into. TO-CONFIRM on deploy.
+      cmd: >
+        sh -c "apk add --no-cache net-snmp-tools &&
+        ip addr add 10.0.0.10/24 dev eth1 &&
+        ip link set eth1 up &&
+        tail -f /dev/null"
+
+    # agent = the managed device. Runs snmpd reading the bound config.
+    agent:
+      kind: linux
+      image: alpine:3.22
+      binds:
+        - configs/agent/snmpd.conf:/etc/snmp/snmpd.conf
+      # Install the daemon + tools, address eth1, then run snmpd in the
+      # foreground (so the container's main process is snmpd and it stays
+      # up). -f = foreground, -Lo = log to stdout, -c = config path.
+      # TO-CONFIRM on deploy.
+      cmd: >
+        sh -c "apk add --no-cache net-snmp net-snmp-tools &&
+        ip addr add 10.0.0.11/24 dev eth1 &&
+        ip link set eth1 up &&
+        snmpd -f -Lo -c /etc/snmp/snmpd.conf"
+
+  links:
+    # Management LAN 10.0.0.0/24: nms .10 <----> agent .11, on eth1.
+    - endpoints: ["nms:eth1", "agent:eth1"]
