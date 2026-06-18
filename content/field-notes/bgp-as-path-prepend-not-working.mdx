@@ -1,0 +1,105 @@
+---
+title: "AS_PATH Prepend Isn't Working? Why It Sometimes Does Nothing"
+description: "You prepended your ASN to shift inbound traffic and nothing changed. AS_PATH length loses to LOCAL_PREF and prepend is only a request, not a command. Why it fails."
+slug: "bgp-as-path-prepend-not-working"
+date: "2026-06-18"
+tags: [bgp, troubleshooting, as-path-prepend, traffic-engineering, frr]
+relatedUnit: "bgp-as-path-prepend"
+---
+
+You have two upstreams, traffic is coming in lopsided, and you reach for the classic fix: prepend your own ASN a few times on the link you want to de-prioritize so the world prefers the other one. You push the config, you wait, you refresh your graphs, and inbound traffic does not move an inch. The link you wanted to bleed is still carrying the same load it was an hour ago.
+
+This is one of the most common "BGP lied to me" moments, and the frustrating part is that the config is usually correct. Prepend did exactly what you told it to do. The problem is that what prepend does is far weaker than people expect, and the place where the decision actually gets made is somewhere you cannot see or control.
+
+## What prepend actually does (and does not)
+
+Prepend lengthens the AS_PATH on the routes you **advertise outbound**. Instead of announcing `10.20.0.0/16` with an AS_PATH of `65001`, you announce it as `65001 65001 65001`. To any router downstream, that path now looks like it crosses three ASes instead of one. The hope is that some other network, faced with two ways into your AS, sees the longer path and prefers the shorter one.
+
+Two things fall out of that immediately, and both trip people up:
+
+- It influences inbound traffic, not outbound. You are changing how other people see the way into your network. If you want to change how traffic leaves you, prepend is the wrong tool entirely (that is LOCAL_PREF, more on that below).
+- It is a polite request, not a command. You are not configuring anyone else's router. You are decorating your announcement and hoping the rest of the internet honors the hint. Every AS between you and the source is free to ignore AS_PATH length completely, and many of them do, because they have their own policy that fires first.
+
+That second point is the whole article. Prepend is best-effort. It works only when nothing higher in the decision overrides it.
+
+## Why it does nothing: AS_PATH length sits low in the algorithm
+
+Here is the part of the BGP best-path order that matters for this discussion, highest priority first:
+
+1. **WEIGHT** (Cisco-ism, local to one router, highest of all)
+2. **LOCAL_PREF** (the AS-wide outbound preference knob)
+3. **Locally originated** (routes this router originated win)
+4. **AS_PATH length** (shorter wins) <- prepend lives here
+5. MED, eBGP-over-iBGP, IGP metric, and the rest of the tiebreakers
+
+Look where AS_PATH length sits. Everything above it overrides it. WEIGHT, LOCAL_PREF, and locally-originated all get evaluated *first*, and if any of them already separates the two paths, the algorithm never even reaches the AS_PATH-length comparison. Your beautiful triple prepend is sitting in step 4 waiting for its turn that never comes.
+
+In real multihoming, the killer is **LOCAL_PREF**, and this is the number-one reason prepend appears to do nothing. The network that actually chooses between your two entrances (often an upstream, or their customer further out) frequently sets a higher LOCAL_PREF on one of the paths for business or cost reasons. Maybe one of your transit providers is cheaper for them. Maybe a peering route is free and a transit route costs money. They encode that preference as LOCAL_PREF, very often via a BGP community you advertised to them without realizing what it did, and LOCAL_PREF is step 2. AS_PATH length is step 4. The decision is over before your prepend is read.
+
+## Read it on the deciding router
+
+Diagnosis is not guesswork. Go to the router that actually chooses between the two paths and ask it directly:
+
+```
+r3# show ip bgp 10.20.0.0/16
+
+BGP routing table entry for 10.20.0.0/16
+Paths: (2 available, best #2, table default)
+  65001 65001 65001
+    10.0.13.1 from 10.0.13.1 (1.1.1.1)
+      Origin IGP, valid, external
+      Community: 65002:120
+  65002
+    10.0.23.2 from 10.0.23.2 (2.2.2.2)
+      Origin IGP, localpref 120, valid, external, best (Local Pref)
+```
+
+And the compact view that makes it obvious:
+
+```
+r3# show ip bgp 10.20.0.0/16
+
+   Network          Next Hop            Metric LocPrf Weight Path
+*  10.20.0.0/16     10.0.13.1                       100      0 65001 65001 65001 i
+*>               10.0.23.2                       120      0 65002 i
+```
+
+You prepended on the left-hand path until it was three AS hops long. It did not matter. Read the `LocPrf` column: the winning path (`>`) has LOCAL_PREF 120, the prepended one has the default 100. FRR even tells you *why* it chose: `best (Local Pref)`. The selection was settled at step 2 and your AS_PATH never got compared. You could prepend ten times and that `>` would not move.
+
+When you read `show ip bgp <prefix>`, read the columns in algorithm order: Weight first, then LocPrf, then the AS_PATH. The moment you find a column where the two paths differ, that is the column that decided it. If LocPrf differs, stop: prepend cannot beat LOCAL_PREF, full stop.
+
+## The other real reasons it fails
+
+LOCAL_PREF is the big one, but these bite too:
+
+**1. You did not prepend enough.** AS_PATH length is a comparison, not a threshold. If the competing path is already shorter than yours by two hops, adding one prepend still leaves you longer, sure, but if the deciding AS is simply fewer AS hops away from the non-prepended path, you may need to prepend more to overcome the existing gap. Count the real AS_PATH lengths on both sides before deciding how many copies of `65001` to add.
+
+**2. Wrong direction or wrong neighbor.** Prepend must be applied **outbound**, toward the neighbor whose inbound decision you are trying to change. Apply it inbound, or on the session that does not carry the path the deciding network sees, and it does nothing useful. This is a surprisingly common fat-finger: the route-map is right, the `neighbor ... route-map ... in` is wrong.
+
+**3. There is only one path.** If you are single-homed, or the prefix is only reachable one way, there is nothing to compare against. Prepend lengthens a path that has no competitor, so the result is identical: the only path wins by default. No second path, no contest, no effect.
+
+**4. The decision happens far away.** The network steering traffic toward you might be three or four ASes out, and it picked its exit based on its own LOCAL_PREF or communities long before AS_PATH length entered the picture. By the time the choice reaches the routers near you, it is already made. Your prepend is visible but irrelevant at the point of decision.
+
+**5. Provider communities outgun you.** Many transits publish communities like "set LOCAL_PREF 120 on routes tagged X." Any customer of theirs using that community beats any prepend you do, because they are writing to step 2 and you are writing to step 4. If your upstream offers LOCAL_PREF-setting communities, assume someone is using them.
+
+## The honest takeaway
+
+Inside an AS you control, you do not prepend to steer traffic. You use **LOCAL_PREF**, because that is a command: every router in your AS obeys it, and it sits near the top of the algorithm. That is the lever for outbound traffic engineering.
+
+For **inbound** traffic, when you do not control the other AS, your options are weaker by nature: AS_PATH prepend, MED (which only helps toward a single upstream you share multiple links with), and provider communities. Of those, prepend is the bluntest and the most best-effort. It works often enough to be worth trying, and fails often enough that you should always confirm on the deciding router instead of assuming.
+
+When you do reach for it, apply it outbound with a route-map:
+
+```
+r1(config)# route-map PREPEND-OUT permit 10
+r1(config-route-map)# set as-path prepend 65001 65001
+r1(config-route-map)# exit
+r1(config)# router bgp 65001
+r1(config-router)# neighbor 10.0.13.3 route-map PREPEND-OUT out
+```
+
+That announces your prefixes to the neighbor at `10.0.13.3` with two extra copies of `65001` glued onto the front of the AS_PATH. Then go to the router that picks between your entrances, run `show ip bgp <prefix>`, and check whether `>` actually moved. If LocPrf still differs in the other path's favor, you now know the truth: this was never a prepend problem.
+
+## Practice this
+
+The fastest way to internalize "prepend loses to LOCAL_PREF" is to watch it lose. Spin up the AS_PATH prepend lab below: it stands up two upstreams advertising the same prefix, lets you prepend on one session, and then shows you `show ip bgp <prefix>` with both paths competing. Prepend until the path is comically long, watch the `>` refuse to move because the other side carries a higher LocPrf, then flip the LOCAL_PREF yourself and see the selection snap over instantly. After you have felt the difference between a request (prepend) and a command (LOCAL_PREF) once, you will stop being surprised when inbound traffic ignores your AS_PATH.

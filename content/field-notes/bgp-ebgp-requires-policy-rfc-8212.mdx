@@ -1,0 +1,141 @@
+---
+title: "eBGP Session Up but No Routes? RFC 8212 and ebgp-requires-policy"
+description: "Your eBGP session is Established but show ip bgp summary shows (Policy) and zero prefixes. RFC 8212 filters policy-less eBGP by default, with the fix in FRR."
+slug: "bgp-ebgp-requires-policy-rfc-8212"
+date: "2026-06-18"
+tags: [bgp, troubleshooting, ebgp, frr, rfc8212]
+relatedUnit: "bgp-ebgp-peering"
+---
+
+This is the cruel one. You did everything right. The interfaces are up, the addressing is clean, the `remote-as` numbers match, and `show ip bgp summary` finally says **Established**. You earned that. Then you go looking for the prefixes you advertised, and they are nowhere. The peer's routes never showed up either. The session is up, both ends are happy, and not a single route has moved in either direction.
+
+Before you start `debug`-ing TCP or second-guessing your network statements, look closely at the summary. If the State/PfxRcd column does not show a number, but instead shows the literal word `(Policy)`, you are not looking at a broken session. You are looking at RFC 8212 doing exactly what it was designed to do.
+
+## Symptom: Established, but the prefix count says (Policy)
+
+Here is what r1 (AS 65001, 10.0.12.1) sees peering with r2 (AS 65002, 10.0.12.2) across the 10.0.12.0/24 link:
+
+```
+r1# show ip bgp summary
+
+IPv4 Unicast Summary (VRF default):
+BGP router identifier 1.1.1.1, local AS number 65001 vrf-id 0
+BGP table version 1
+RIB entries 1, using 192 bytes of memory
+Peers 1, using 20 KiB of memory
+
+Neighbor        V         AS   MsgRcvd   MsgSent   Up/Down State/PfxRcd
+10.0.12.2       4      65002         9         9  00:01:14         (Policy)
+
+Total number of neighbors 1
+```
+
+Notice that `MsgRcvd` and `MsgSent` are both climbing, and `Up/Down` shows a healthy uptime. The session is genuinely Established. But where you expect a prefix count (a `3`, say), you get `(Policy)`. FRR is telling you it accepted zero prefixes from this neighbor on purpose, because of a missing policy.
+
+Ask the neighbor command for the full story and it spells it out:
+
+```
+r1# show bgp neighbor 10.0.12.2
+...
+  For address family: IPv4 Unicast
+    Update group 1, subgroup 1
+    Packet Queue length 0
+    Inbound soft reconfiguration allowed
+    Community attribute sent to this neighbor(all)
+    Inbound updates discarded due to missing policy
+    Outbound updates discarded due to missing policy
+    0 accepted prefixes
+...
+```
+
+There it is in plain text: `Inbound updates discarded due to missing policy` and `Outbound updates discarded due to missing policy`. Nothing is broken. Everything is being filtered, by design, in both directions.
+
+## Why: RFC 8212 makes policy-less eBGP a no-op
+
+RFC 8212 has a name that tells you the whole story: "Default External BGP Route Propagation Behavior Without Policies." Its rule is short and strict. An eBGP speaker that has **no import policy AND no export policy** configured for a neighbor must not accept routes from that neighbor, and must not advertise routes to it. With no policy in a given direction, that direction is treated as deny-all.
+
+Why would anyone want a router that ignores its peer by default? Because the alternative used to cause real outages. Before RFC 8212, a freshly configured eBGP router would happily accept every prefix its peer sent and re-advertise everything it knew, with zero filtering, the instant the session came up. Misconfigure one `neighbor` line at the edge of your network and you could become accidental transit, hairpinning a chunk of the internet through a router that was never meant to carry it. RFC 8212 turns that failure mode off. A router with no explicit policy now does the safe thing, which is nothing, until you tell it what you actually intend to permit.
+
+FRR enforces this by default, and the part that trips people up: it applies **even under `frr defaults traditional`**. The "traditional" defaults profile changes a number of behaviors back toward older-IOS-like conventions, but `ebgp-requires-policy` is a safety guardrail, not a style preference, so it stays on. If you assumed `traditional` would give you the old wide-open behavior, this is the surprise waiting for you.
+
+Two more things worth pinning down, because they save you from misdiagnosing:
+
+- It is eBGP-only. iBGP sessions are completely unaffected. If your lab has both, you will see iBGP neighbors carrying prefixes normally while the eBGP neighbor sits at `(Policy)`. That contrast is a strong tell.
+- It is per-address-family. The requirement is evaluated for each AFI/SAFI on its own. Satisfy it for IPv4 unicast and your IPv6 unicast neighbor can still be sitting at `(Policy)` until you give that family a policy too.
+
+## Fix: give the session a policy (or turn the guardrail off)
+
+There are two correct ways out, and they are correct for different reasons.
+
+### Option 1: the learning/lab fix
+
+When you are working through a lab and you just want routes to flow so you can study the rest of BGP, you can disable the requirement outright. This is the convention these labs use:
+
+```
+r1# configure terminal
+r1(config)# router bgp 65001
+r1(config-router)#  no bgp ebgp-requires-policy
+r1(config-router)# end
+```
+
+Do the same on r2 under `router bgp 65002`. Then either clear the session or do a soft refresh so the change takes effect:
+
+```
+r1# clear ip bgp 10.0.12.2
+```
+
+A soft clear (`clear ip bgp 10.0.12.2 soft`) re-evaluates policy without tearing down the TCP session, which is gentler. Either way, prefixes start flowing.
+
+This is fine for learning. It is the wrong habit for a production edge, because you have just removed the guardrail instead of stating your intent.
+
+### Option 2: the production-correct fix
+
+In a real network you do not delete the safety check. You satisfy it, by attaching a policy in each direction. FRR wants to see a policy inbound and a policy outbound; satisfying only one direction leaves the other still discarding updates. Even a deliberately permissive route-map counts, because the point of RFC 8212 is that you made an explicit choice:
+
+```
+r1# configure terminal
+r1(config)# route-map ALLOW-ALL permit 10
+r1(config-route-map)# exit
+r1(config)# router bgp 65001
+r1(config-router)#  neighbor 10.0.12.2 route-map ALLOW-ALL in
+r1(config-router)#  neighbor 10.0.12.2 route-map ALLOW-ALL out
+r1(config-router)# end
+r1# clear ip bgp 10.0.12.2 soft
+```
+
+That empty `permit 10` clause matches everything and permits it, which is enough to make FRR consider the direction "has a policy" and stop discarding. Apply the mirror config on r2.
+
+Now, the honest caveat: a bare `ALLOW-ALL` in each direction satisfies the letter of RFC 8212 while throwing away its spirit. Real networks put a real prefix-list or route-map here: filter inbound so you only accept the prefixes your peer is supposed to send, and filter outbound so you only advertise what you mean to originate or transit. The discipline RFC 8212 is nudging you toward is exactly that habit, declaring your intent in both directions, so build the muscle now and make those route-maps mean something.
+
+## Verify: the prefix count comes back
+
+After either fix, pull the summary again. The `(Policy)` placeholder is replaced by an actual number:
+
+```
+r1# show ip bgp summary
+
+Neighbor        V         AS   MsgRcvd   MsgSent   Up/Down State/PfxRcd
+10.0.12.2       4      65002        14        14  00:03:02            3
+```
+
+That `3` means three prefixes received and accepted. Now confirm routes are genuinely moving in both directions. Check what you are sending the peer:
+
+```
+r1# show ip bgp neighbors 10.0.12.2 advertised-routes
+```
+
+and check what you are receiving from it:
+
+```
+r1# show ip bgp neighbors 10.0.12.2 received-routes
+```
+
+If `received-routes` needs soft reconfiguration to populate and comes back empty, run `clear ip bgp 10.0.12.2 soft in` first. When both lists show prefixes, the session is not just Established, it is actually carrying traffic, which is the part you cared about all along.
+
+## What you learned
+
+`(Policy)` in the prefix column is not a failure, it is a question: what do you actually want this eBGP session to do? An Established session with zero prefixes and that telltale `(Policy)` marker means RFC 8212 caught a policy-less neighbor and refused to leak or accept routes blind. iBGP is exempt, the rule is checked per address family, and even `frr defaults traditional` keeps it on. In the lab, `no bgp ebgp-requires-policy` clears the path. In production, attach an inbound and an outbound policy and let them say something true about your intent.
+
+## Practice this
+
+The fastest way to make this reflex permanent is to watch a session sit at `(Policy)` and then bring it back to life yourself. Spin up the eBGP peering lab below, get a real FRR eBGP session to Established, and confirm `show ip bgp summary` shows `(Policy)` rather than a prefix count. Fix it once the lab way with `no bgp ebgp-requires-policy`, then tear it back down and fix it the production way with a route-map applied `in` and `out`. After you have driven both paths by hand, the next time a brand-new eBGP session comes up Established with no routes, you will read that one word and know exactly what to type.

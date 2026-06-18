@@ -1,0 +1,153 @@
+---
+title: "Reading show ip bgp: Every Flag and Column Explained"
+description: "What the *, >, i, r, and s markers in show ip bgp mean, and how to read the Network, Next Hop, Metric, LocPrf, Weight, and Path columns in FRR."
+slug: "bgp-reading-show-ip-bgp-output"
+date: "2026-06-18"
+tags: [bgp, frr, show-ip-bgp, reference, troubleshooting]
+relatedUnit: "bgp-observe-a-session"
+---
+
+`show ip bgp` is the single most useful command in BGP, and also the most cryptic the first time you meet it. It is a wall of asterisks, greater-than signs, stray letters, and numbers in columns nobody labeled clearly. The good news: every character on that screen means exactly one thing, and once you can read it cold, most BGP problems announce themselves in the first two columns. This is a decoder ring for the whole table, top to bottom and left to right.
+
+Here is a real one to anchor on. Three loopback prefixes learned across a small lab, ASNs 65001/65002/65003, point-to-point links on `10.0.12.x` and friends:
+
+```
+r1# show ip bgp
+
+BGP table version is 6, local router ID is 1.1.1.1, vrf id 0
+Default local pref 100, local AS 65001
+Status codes:  s suppressed, d damped, h history, * valid, > best, = multipath,
+               i internal, r RIB-failure, S Stale, R Removed
+Nexthop codes: @NNN nexthop's vrf id, < announce-nh-self
+Origin codes:  i - IGP, e - EGP, ? - incomplete
+
+   Network          Next Hop            Metric LocPrf Weight Path
+*> 1.1.1.1/32       0.0.0.0                  0         32768 i
+*> 2.2.2.2/32       10.0.12.2                0             0 65002 i
+*  3.3.3.3/32       10.0.23.3                0    100      0 65002 65003 i
+*>i                 10.0.13.3                0    100      0 65003 i
+
+Displayed  3 routes and 4 total paths
+```
+
+We will take it apart one piece at a time.
+
+## The status-code legend
+
+FRR prints the key right above the table, every time. Memorize this line because it is the diagnosis half of every BGP ticket:
+
+```
+Status codes:  s suppressed, d damped, h history, * valid, > best, = multipath,
+               i internal, r RIB-failure, S Stale, R Removed
+```
+
+The markers you will actually meet, in rough order of how often they matter:
+
+- `*` **valid**: BGP considers this path usable. Its next-hop resolves, it passed inbound policy, it is a candidate. Most healthy paths carry it.
+- `>` **best**: this is the path BGP selected and handed to zebra (FRR's RIB manager, the daemon that arbitrates between protocols and installs the winner into the kernel) for installation. Exactly one path per prefix gets the `>` (unless you have multipath). No `>` on a prefix means nothing got installed for it.
+- `=` **multipath**: BGP is using this path alongside the best path for load-sharing. You only see it when `maximum-paths` is configured and several paths tied through the selection.
+- `i` (in the **leading** column) **internal**: the path was learned from an iBGP peer. More on this one below, because it is the single biggest source of confusion in the whole output.
+- `r` **RIB-failure**: BGP picked this path as best and tried to install it, but zebra refused. Almost always because another protocol already owns the prefix at a better administrative distance. The path is fine; the install failed.
+- `s` **suppressed**: this more-specific prefix is being suppressed by an aggregate (`aggregate-address ... summary-only`). It exists in the table but is deliberately not advertised because the summary covers it.
+
+And the three you will see less often but should recognize:
+
+- `S` **Stale**: held over during a graceful restart. The peer is reconverging and BGP is keeping the old path temporarily rather than dropping traffic.
+- `R` **Removed**: the path is on its way out, scheduled for deletion.
+- `d` **damped** / `h` **history**: route flap dampening territory. Rare on modern setups, but that is what the letters mean.
+
+A line beginning `*>` is the happy path: valid and best. A line beginning `* ` (valid, no `>`) is a backup that lost selection. A line beginning `r>` is best-but-rejected-by-zebra. You can triage most of a table just by reading column one.
+
+## The two `i` letters that are not the same letter
+
+This is the trap, so we are going to be very precise about it. There are **two** places an `i` can appear on a BGP line, and they mean completely different things.
+
+Look again at this row:
+
+```
+*>i                 10.0.13.3                0    100      0 65003 i
+```
+
+The **leading** `i`, sitting in the status column right after `*>`, means **this path was learned from an iBGP peer** (internal). It is a status code. It describes *how you heard the route*.
+
+The **trailing** `i`, the very last character on the line after the AS path `65003`, is the **ORIGIN code**. It describes *how the route was first injected into BGP*, way back at the source. FRR even prints the legend for it: `Origin codes: i - IGP, e - EGP, ? - incomplete`.
+
+So the origin code is one of three characters at the end of the Path column:
+
+- `i` = **IGP**: the prefix was originated with a `network` statement or otherwise told to BGP cleanly. This is the common, tidy case.
+- `e` = **EGP**: the legacy Exterior Gateway Protocol that BGP replaced. You will functionally never see this in the wild; treat it as a museum piece.
+- `?` = **incomplete**: BGP cannot vouch for how the prefix got in, usually because it was **redistributed** from another protocol (connected, static, OSPF). Not bad, just less pedigreed, and it loses an origin tiebreak to `i` late in best-path selection.
+
+The crisp version to keep in your head: **leading `i` = learned over iBGP** (a property of the link you got it on), **trailing `i` = origin IGP** (a property baked in at the source). One is about your neighbor; the other is about history. They can both be `i` on the same line and mean nothing to each other.
+
+## The columns, left to right
+
+Now the headers: `Network   Next Hop   Metric   LocPrf   Weight   Path`.
+
+**Network** is the prefix. Note the second `3.3.3.3/32` entry: the Network field is **blank**. Blank does not mean "no prefix." It means "same prefix as the line above." When BGP knows several paths to one destination, it prints the prefix once and leaves the field empty on every continuation line. So our `3.3.3.3/32` actually has two paths stacked under it: one via `10.0.23.3` (valid, not best) and one via `10.0.13.3` (valid, best, learned over iBGP).
+
+**Next Hop** is where BGP would forward traffic for this prefix. The value `0.0.0.0` is special: it means this router originated the prefix itself. That is why `1.1.1.1/32` shows `0.0.0.0` on r1, with a Weight of `32768` (the weight FRR stamps on locally sourced routes). A normal next-hop like `10.0.12.2` is the address BGP will recurse through the routing table to reach; if that address does not resolve, the path goes invalid (and you will not see `*`).
+
+**Metric** is the MED (Multi-Exit Discriminator), the value a neighbor uses to hint which entry point it prefers when there are several. Often `0`. It is a late tiebreaker in best-path selection and frequently blank when nobody set it.
+
+**LocPrf** is LOCAL_PREF, the headline knob for steering outbound traffic inside your AS. Higher wins, and it is compared early, so it overrides AS-path length. Notice it is `100` on the iBGP-learned paths but blank on `2.2.2.2/32`. That is expected: LOCAL_PREF is not carried across eBGP, so a freshly eBGP-learned path often shows nothing here until your policy assigns one.
+
+**Weight** is a Cisco-ism that FRR honors: a purely local preference that is never advertised to any peer. Higher wins, and it is checked first of all, before LOCAL_PREF. Locally originated routes get `32768`; everything else defaults to `0` unless you set it. Because it never leaves the box, weight is a per-router override, not a network-wide policy.
+
+**Path** is the AS_PATH, the list of autonomous systems the route traversed, newest on the left, oldest on the right, with the origin code tacked on at the very end. `65002 65003 i` reads as: learned via AS 65002, which heard it from AS 65003, originated with IGP origin. AS-path length (fewer hops) is a major tiebreaker, which is why one of the `3.3.3.3/32` paths (`65003 i`, one hop) beats the other (`65002 65003 i`, two hops) and earns the `>`.
+
+## The single-prefix deep view
+
+The table view is the index; `show ip bgp <prefix>` is the full article. Use it the moment you need to know *why* a path won or lost:
+
+```
+r1# show ip bgp 3.3.3.3/32
+
+BGP routing table entry for 3.3.3.3/32
+Paths: (2 available, best #2, table default)
+  Advertised to non peer-group peers:
+  10.0.12.2
+  65002 65003
+    10.0.23.3 from 10.0.12.2 (2.2.2.2)
+      Origin IGP, metric 0, localpref 100, valid, external
+      Last update: Tue Jun 17 09:14:02 2026
+  65003
+    10.0.13.3 from 10.0.13.3 (3.3.3.3)
+      Origin IGP, metric 0, localpref 100, valid, internal, best
+      Community: 65003:100
+      Last update: Tue Jun 17 09:13:55 2026
+```
+
+Read it top down. The `Paths: (2 available, best #2)` line tells you how many candidates there are and which one won; here the second path printed is best. Each path then prints its AS_PATH (`65003`), the next-hop and source (`10.0.13.3 from 10.0.13.3 (3.3.3.3)`, where the trailing parenthesized value is the peer's router ID), and an attribute line that is the whole scorecard: `Origin IGP, metric 0, localpref 100, valid, internal, best`.
+
+That attribute line is worth reading word by word. `valid` is your `*`. `best` is your `>`. `internal` versus `external` tells you iBGP versus eBGP (the leading-`i` distinction, spelled out in plain English so you cannot mistake it). `Community: 65003:100` shows any communities attached, the tags policy uses for routing decisions. `Last update` is when the path last changed, gold for spotting a flapping route.
+
+To spot a **valid path that is not best**, find a path block whose attribute line says `valid` but does **not** say `best`. The first path above (`65002 65003`, via `10.0.23.3`) is exactly that: perfectly usable, just beaten on AS-path length. To spot an **invalid** path, you will see `(inaccessible)` next to its next-hop and the word `invalid` instead of `valid`, with the prefix often reporting `no best path` overall. An invalid path never installs because BGP cannot resolve where to send the traffic.
+
+The line near the top also carries advertisement state. **`Advertised to non peer-group peers:`** followed by `10.0.12.2` means you are handing this prefix to that neighbor. If instead you see **`Not advertised to any peer`**, BGP knows the route but is keeping it to itself, which is your answer when a downstream neighbor swears they never received it.
+
+## The JSON variant, for when you stop reading and start scripting
+
+Every command above takes a `json` suffix:
+
+```
+r1# show ip bgp 3.3.3.3/32 json
+r1# show ip bgp summary json
+```
+
+The output is the same data as structured JSON instead of column-aligned text. Operators reach for it the instant a human stops watching and a script starts: the text layout shifts between FRR versions, columns wrap, and scraping it with `awk` is a fragile mess, while the JSON keys (`bestPath`, `valid`, `nexthops`, `prefixCount`, `peers`) stay stable and parse cleanly. This is exactly how the labs check your work: rather than grepping screen text, the verifier runs the `json` form and asserts on fields, so an objective like "the session reached Established with three prefixes" becomes a clean check against `state` and `pfxRcd` instead of a guess about where a word landed on the line.
+
+## What the markers tell you to go fix
+
+Tie it together. The flags are not decoration, they are a triage tree:
+
+- **No `>` on a prefix**: nothing was selected, so nothing installed. Either every path is invalid (check next-hop resolution) or a better path won elsewhere. Pull the single-prefix view and read the attribute lines.
+- **`r` on the line**: zebra refused the install. BGP did its job; a lower-distance protocol is holding the slot. Check `show ip route` for the prefix.
+- **`(inaccessible)` next-hop in the deep view**: the next-hop does not resolve, the path is `invalid`, and it can never be best. This is the classic iBGP next-hop problem.
+- **Leading `i` everywhere but routes not installing**: you are learning over iBGP and the next-hops are unreachable edge addresses. A `next-hop-self` conversation is coming.
+
+Each of those has its own deeper field note; this one just teaches you to read the screen well enough to know which note to open next.
+
+## Practice this
+
+Reading a table in an article is not the same as reading one that is moving. Spin up the observe-a-session lab below, bring a real FRR session to Established, and run `show ip bgp` against live prefixes: find the locally originated `0.0.0.0` line, point at the leading `i` versus the trailing origin `i` on the same row, and prove to yourself which path carries `>` and why. Then drop into `show ip bgp <prefix>` and match every flag in the table to a word on the attribute line. After one pass by hand, the wall of asterisks turns into a sentence you can read at a glance.
