@@ -35,7 +35,21 @@ export async function middleware(request: NextRequest) {
   });
 
   // Touch the session so an expiring token gets refreshed into the cookie.
-  await supabase.auth.getUser();
+  // This must NEVER be allowed to hang the request: if Supabase is slow or
+  // unreachable, serve the page anyway (the cookie just isn't refreshed this
+  // time) rather than letting the whole site time out with a 504. Bounded by a
+  // short timeout and swallowing errors keeps a backend outage from taking the
+  // site down.
+  try {
+    await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("auth refresh timed out")), 3000),
+      ),
+    ]);
+  } catch {
+    // Supabase slow/unreachable — proceed with the un-refreshed session.
+  }
 
   return response;
 }
