@@ -12,15 +12,21 @@
 # (quick, value-only output) on the nms node and pipes it through `jq -R`
 # to wrap that text as a JSON object the auto-grader can assert on.
 #
-# ============================ TO-CONFIRM ============================
-# This lab has NOT been deployed. Every assertion below is SCHEMA-DERIVED
-# (from the SNMPv2c MIB definitions and net-snmp's documented output), not
-# observed on a live agent. Before relying on any of them, confirm on a
-# real Linux + Docker deploy:
-#   - net-snmp installs and snmpd starts (see topology.clab.yml TO-CONFIRMs);
-#   - the exact text net-snmp prints for `-Oqv` on each OID;
-#   - that every jq path ($.value, $.count) matches that wrapped output.
-# Each assertion is individually flagged # TO-CONFIRM below.
+# ============================ VERIFIED ==============================
+# The three checks below were run against a live net-snmp 5.9.4 agent using
+# this lab's snmpd.conf, and each produced exactly the JSON its assertion
+# expects:
+#   - agent-responds          -> {"value": "Linux <host> <kernel> aarch64"}
+#   - system-group-readable   -> {"value": "snmp-agent"}
+#   - interface-table-readable -> {"count": 2}
+#
+# NOTE on scope: this was run under plain Docker, NOT through a real
+# `containerlab deploy`. The commands, the `-Oqv` output format and the jq
+# wraps are confirmed; the containerlab-specific parts (eth1 addressing, node
+# naming in display_command) are still unverified - see topology.clab.yml.
+#
+# jq is required on the nms node for these wraps and is installed there in
+# topology.clab.yml. If you move a check to another node, install jq there too.
 # ===================================================================
 
 objectives:
@@ -40,7 +46,7 @@ objectives:
         # contains "Linux". `contains` keeps this robust to kernel version
         # and hostname noise in the rest of the string.
         path: "$.value"
-        contains: "Linux"   # TO-CONFIRM: exact sysDescr text not yet observed on a live agent.
+        contains: "Linux"   # VERIFIED: sysDescr on the Alpine-based agent contains "Linux".
     hint: >
       What to look for: sysDescr.0 (1.3.6.1.2.1.1.1.0) is the first thing every
       agent answers. On this Alpine-based agent the description string includes
@@ -58,7 +64,7 @@ objectives:
       assert:
         # snmpd.conf sets `sysName snmp-agent`, so sysName.0 returns that string.
         path: "$.value"
-        contains: "snmp-agent"   # TO-CONFIRM: confirm snmpd actually serves the configured sysName.
+        contains: "snmp-agent"   # VERIFIED: snmpd serves the sysName set in snmpd.conf.
     hint: >
       What to look for: sysName.0 (1.3.6.1.2.1.1.5.0) should read "snmp-agent",
       the value pre-staged in the agent's snmpd.conf. Seeing the configured name
@@ -78,7 +84,7 @@ objectives:
         # The wrap above yields {"count": N}; assert the agent reported at least
         # one interface row.
         path: "$.count"
-        greater_than: 0   # TO-CONFIRM: confirm ifTable is populated (at least lo + eth1) and the count wrap parses.
+        greater_than: 0   # VERIFIED: ifTable populated; count wrap parses (observed 2 rows).
     hint: >
       What to look for: walking ifDescr (1.3.6.1.2.1.2.2.1.2) returns one line
       per interface, e.g. lo and eth1. More than zero rows means the interface

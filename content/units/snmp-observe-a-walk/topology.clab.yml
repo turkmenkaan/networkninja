@@ -8,16 +8,22 @@
 #
 #   1. IMAGE: alpine:3.22 is a verified tag, but the base image does NOT
 #      ship net-snmp. Both nodes `apk add` it at boot (needs network/CDN
-#      reachability inside the lab). TO-CONFIRM.
-#   2. INSTALL: package names `net-snmp` (the snmpd daemon) and
-#      `net-snmp-tools` (the snmp* client binaries) are the Alpine names
-#      as of this writing. Confirm they resolve and pull cleanly. TO-CONFIRM.
-#   3. SNMPD STARTUP: the agent runs `snmpd` in the foreground reading the
-#      bound /etc/snmp/snmpd.conf. Confirm it actually starts and answers
-#      on UDP 161. TO-CONFIRM.
+#      reachability inside the lab). CONFIRMED on plain Docker (see below);
+#      the boot-time CDN dependency remains a fragility - a pre-baked image
+#      is the durable fix.
+#   2. INSTALL: CONFIRMED on alpine:3.22/arm64 - `net-snmp` (5.9.4-r1),
+#      `net-snmp-tools` and `jq` (1.8.1) all resolve and pull cleanly.
+#   3. SNMPD STARTUP: CONFIRMED - snmpd starts in the foreground reading the
+#      bound config, listens on UDP 161, and serves the configured
+#      rocommunity/sysName/sysLocation/sysContact values.
 #   4. IP ASSIGNMENT: eth1 addresses are assigned via `ip addr add` in the
 #      boot command (containerlab brings the veth up, we set the address).
 #      Confirm both nodes can ping across 10.0.0.0/24. TO-CONFIRM.
+#
+# NOTE on what was actually verified: items 1-3 were confirmed by running
+# these images and this snmpd.conf under plain Docker, NOT through a real
+# `containerlab deploy`. Anything containerlab-specific - the veth/eth1
+# naming and item 4 - is still unverified.
 #
 # If you change the approach (entrypoint script, image with net-snmp
 # pre-baked, etc.), update content.mdx's troubleshooting note too.
@@ -33,8 +39,11 @@ topology:
       image: alpine:3.22
       # Install the client tools, address eth1, then idle so the container
       # stays up for the learner to `docker exec` into. TO-CONFIRM on deploy.
+      # jq is here for tasks.yaml: the net-snmp tools print plain text, so the
+      # verification checks pipe through `jq -R` to wrap it as JSON. Every
+      # check in tasks.yaml runs on this node, so only nms needs it.
       cmd: >
-        sh -c "apk add --no-cache net-snmp-tools &&
+        sh -c "apk add --no-cache net-snmp-tools jq &&
         ip addr add 10.0.0.10/24 dev eth1 &&
         ip link set eth1 up &&
         tail -f /dev/null"
@@ -48,11 +57,21 @@ topology:
       # Install the daemon + tools, address eth1, then run snmpd in the
       # foreground (so the container's main process is snmpd and it stays
       # up). -f = foreground, -Lo = log to stdout, -c = config path.
-      # TO-CONFIRM on deploy.
+      #
+      # The `[ -f ... ]` guard exists because a failed bind mount is silent:
+      # Docker creates the host side as an empty DIRECTORY when it cannot see
+      # the path, so snmpd would start with default config, listen on 161, and
+      # time out every poll with nothing in the logs. Failing loudly here turns
+      # an afternoon of debugging into one line in `docker logs`.
       cmd: >
         sh -c "apk add --no-cache net-snmp net-snmp-tools &&
         ip addr add 10.0.0.11/24 dev eth1 &&
         ip link set eth1 up &&
+        if [ ! -f /etc/snmp/snmpd.conf ]; then
+        echo 'FATAL: /etc/snmp/snmpd.conf is not a regular file. The bind mount
+        did not land - on macOS this happens when the lab directory sits outside
+        the paths your Docker VM shares (usually only your home directory).';
+        exit 1; fi &&
         snmpd -f -Lo -c /etc/snmp/snmpd.conf"
 
   links:
