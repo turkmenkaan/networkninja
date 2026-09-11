@@ -110,7 +110,7 @@ BGP prefers the **shorter** AS_PATH, so `r4` now marks the path via `r2` as best
 
 - **Prepend the right way.** You prepend **outbound, toward the upstream you want to be LESS preferred** (here, `r3`). Prepending toward `r2` would push traffic to `r3`, the opposite of the goal.
 - **Longer AS_PATH = less preferred.** Each prepend adds one AS hop. If `r4` still load-balances or picks `r3`, you likely did not add enough prepends or applied the route-map to the wrong neighbor (or wrong direction).
-- **The receiver decides.** Prepending does not *force* anything; it only makes one path look worse. `r4` is free to weigh higher-priority attributes (like LOCAL_PREF) first. Always confirm the outcome **on `r4`**, not on `r1`, because `r1` cannot see who won.
+- **The receiver decides.** Prepending does not *force* anything; it only makes one path look worse. `r4` is free to weigh higher-priority attributes (like LOCAL_PREF) first. Always confirm the outcome **on `r4`**, not on `r1`, because `r1` cannot see who won. [AS_PATH prepend isn't working?](/field-notes/bgp-as-path-prepend-not-working) digs into why prepend sometimes does nothing on the real internet.
 - **No change after editing?** Re-advertise with `clear bgp * out` on `r1` so the longer path actually propagates, and confirm all four sessions are `Established` with `show ip bgp summary`.
 
 ## Tear down

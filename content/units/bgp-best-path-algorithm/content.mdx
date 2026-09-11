@@ -1,12 +1,12 @@
 # The BGP Best-Path Algorithm, Top to Bottom
 
-You have met the path attributes one at a time: WEIGHT, LOCAL_PREF, AS_PATH, ORIGIN, MED. Now you get to see how they fit together. For any given prefix a BGP router may know several candidate paths, but it installs exactly **one** of them as best. The way it chooses is not a vote and not a score. It is an ordered list of tie-breakers, and the router walks that list from top to bottom, stopping the instant a step produces a single winner.
+You have met the path attributes one at a time: WEIGHT, LOCAL_PREF, AS_PATH, ORIGIN, MED. Now you get to see how they fit together. For any given prefix a BGP router may know several candidate paths, but it installs exactly **one** of them as best. The way it chooses is not a vote and not a score. It is an ordered list of tie-breakers, and the router walks that list from top to bottom, stopping the instant a step produces a single winner. In FRR, the winner is the path marked `>` in `show ip bgp`; [reading show ip bgp](/field-notes/bgp-reading-show-ip-bgp-output) decodes the rest of that output.
 
 That "stop at the first decider" behavior is the whole trick. If WEIGHT already separates two paths, nothing below WEIGHT ever gets looked at. AS_PATH length, MED, IGP cost: all irrelevant the moment something higher up has decided. So the order is not trivia. It is the priority of your levers.
 
 ## The precondition: a usable NEXT_HOP
 
-Before a path is even allowed into the contest, its **NEXT_HOP must be reachable**. If your routing table has no route to the NEXT_HOP address, BGP marks that path as not a candidate and skips it entirely. A perfectly attractive path with an unreachable next hop loses by default, because it never enters the comparison. Keep this in mind: a "missing" best path is very often a NEXT_HOP resolution problem, not an attribute problem.
+Before a path is even allowed into the contest, its **NEXT_HOP must be reachable**. If your routing table has no route to the NEXT_HOP address, BGP marks that path as not a candidate and skips it entirely. A perfectly attractive path with an unreachable next hop loses by default, because it never enters the comparison. Keep this in mind: a "missing" best path is very often a NEXT_HOP resolution problem, not an attribute problem. [BGP route in the table but not in the routing table](/field-notes/bgp-route-not-in-routing-table) shows how to tell the difference.
 
 ## The ordered list
 

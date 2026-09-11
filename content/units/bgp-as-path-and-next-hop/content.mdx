@@ -16,7 +16,7 @@ The AS_PATH is the ordered list of autonomous systems a route has traversed. Whe
 
 That single list pulls double duty. AS_PATH has **two jobs**, and you should keep them separate in your head.
 
-**Job one: loop prevention.** Before a router accepts an incoming eBGP route, it scans the AS_PATH for its own ASN. If it finds itself already in the path, it **rejects the route outright**. The reasoning is airtight: if your ASN is in there, this advertisement already passed through you once, so accepting it would close a loop. No metric counting up to infinity, no hold-down timers, just an inspection of the path.
+**Job one: loop prevention.** Before a router accepts an incoming eBGP route, it scans the AS_PATH for its own ASN. If it finds itself already in the path, it **rejects the route outright**. The reasoning is airtight: if your ASN is in there, this advertisement already passed through you once, so accepting it would close a loop. No metric counting up to infinity, no hold-down timers, just an inspection of the path. (It is also why a route can vanish when your own ASN legitimately appears in it; see [AS_PATH loops and the allowas-in fix](/field-notes/bgp-as-path-loop-allowas-in).)
 
 **Job two: best-path tie-breaking.** When two valid paths reach the same prefix, BGP prefers the one with the **shorter AS_PATH**, on the logic that fewer ASes traversed is closer to the origin. AS_PATH length sits high in the best-path decision list, just below locally controlled attributes, so in practice it is one of the most common reasons one path beats another.
 
@@ -51,7 +51,7 @@ Here is the part that ties NEXT_HOP straight into best-path selection. A BGP rou
   caption={<>Without next-hop-self, Core learns the prefix with the eBGP peer's address as NEXT_HOP. If Core has no IGP route to that address, the recursive lookup fails, the route is marked inaccessible, and it never reaches best-path.</>}
 />
 
-If that recursive lookup **fails**, BGP marks the path **inaccessible** and the route cannot be installed or chosen as best. In FRR you will see it flagged without the `>` best marker (and often with `r RIB-failure` or an inaccessible note) in `show ip bgp`. So before AS_PATH length or any other attribute even gets a vote, the NEXT_HOP gate runs first: an unreachable next hop knocks the path out of the running entirely.
+If that recursive lookup **fails**, BGP marks the path **inaccessible** and the route cannot be installed or chosen as best. In FRR you will see it flagged without the `>` best marker (and often with `r RIB-failure` or an inaccessible note) in `show ip bgp`. So before AS_PATH length or any other attribute even gets a vote, the NEXT_HOP gate runs first: an unreachable next hop knocks the path out of the running entirely. If a prefix shows up in `show ip bgp` but never reaches `show ip route`, check this first; [BGP route in the table but not in the routing table](/field-notes/bgp-route-not-in-routing-table) walks through it along with the other usual causes.
 
 ## Where this shows up
 

@@ -53,7 +53,7 @@ Read it line by line:
 
 > What you just read: the session reached **Established** and is exchanging exactly one route. That single line ties directly back to the FSM you learned: Established is the final state, and only in Established do routers exchange Update messages.
 
-> **Why not `(Policy)`?** By default FRR refuses to exchange routes on an eBGP session that has no routing policy (RFC 8212), and shows `(Policy)` in this column instead of a count. This lab's configs include `no bgp ebgp-requires-policy` to turn that off so you can watch real routes flow. You'll meet policy and RFC 8212 properly in the Route Filtering module.
+> **Why not `(Policy)`?** By default FRR refuses to exchange routes on an eBGP session that has no routing policy (RFC 8212), and shows `(Policy)` in this column instead of a count. This lab's configs include `no bgp ebgp-requires-policy` to turn that off so you can watch real routes flow. You'll meet policy and RFC 8212 properly in the Route Filtering module, or jump ahead with [eBGP session up but no routes?](/field-notes/bgp-ebgp-requires-policy-rfc-8212).
 
 ## Step 2: The neighbor in depth: FSM, timers, capabilities, counters
 
@@ -120,7 +120,7 @@ You'll see something like:
 
 Read the `2.2.2.2/32` row, the route you *learned* from r2:
 
-- **`*>`**: the `*` means the route is valid; the **`>`** means it's the **best path** (the one installed into the routing table). With only one path here it's trivially best, but training your eye to find the `>` pays off later.
+- **`*>`**: the `*` means the route is valid; the **`>`** means it's the **best path** (the one installed into the routing table). With only one path here it's trivially best, but training your eye to find the `>` pays off later. For every flag and column in this output, see [reading show ip bgp](/field-notes/bgp-reading-show-ip-bgp-output).
 - **Next Hop `10.0.12.2`**: to reach `2.2.2.2/32`, send packets to r2's interface address. On eBGP, the next-hop is the advertising neighbor.
 - **`Path` = `65002 i`**: this is the **AS_PATH**. It says "to get to this prefix, traffic passes through AS 65002." The `i` is the origin code (`i` = IGP, i.e. the route was originated with a `network` statement). As this route crosses more AS boundaries in a bigger network, each AS prepends its number here; that growing list is exactly how BGP detects and prevents loops.
 

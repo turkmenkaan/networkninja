@@ -109,7 +109,8 @@ You should see `1.1.1.1/32` in `r2`'s BGP table, learned from `r1`. Its AS_PATH 
 
 ## Troubleshooting
 
-- **Stuck in `Active` or `Connect`?** You probably forgot `update-source lo`, so the session is sourced from the wrong address and `r2` rejects it. Or the loopback simply isn't reachable: run `show ip route 2.2.2.2` and confirm OSPF has a route.
+- **Stuck in `Active` or `Connect`?** You probably forgot `update-source lo`, so the session is sourced from the wrong address and `r2` rejects it. Or the loopback simply isn't reachable: run `show ip route 2.2.2.2` and confirm OSPF has a route. [BGP stuck in Active](/field-notes/bgp-stuck-in-active) lists the other usual causes.
+- **Route learned but marked `inaccessible`?** BGP cannot resolve the route's next hop on this router, so it will not install it. [BGP route in the table but not in the routing table](/field-notes/bgp-route-not-in-routing-table) shows how to confirm that and covers the other usual causes.
 - **Session won't form at all?** For iBGP the `remote-as` must **equal your own AS** (65001 on both sides). If you typed a different AS, BGP would treat it as eBGP and the loopback peering would not behave as expected.
 - **Session up but no `1.1.1.1/32` on r2?** Make sure `r1` actually advertises it with `network 1.1.1.1/32`. An Established session exchanges nothing on its own.
 

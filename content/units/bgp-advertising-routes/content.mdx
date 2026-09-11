@@ -105,7 +105,7 @@ r2# show ip bgp 1.1.1.1/32
 
 - **Prefix not showing up on the far side?** The most common cause is a mismatch in the `network` statement. The prefix **and length must match exactly**: `network 1.1.1.1/32` originates the loopback, but `network 1.1.1.0/24` would not, because no `1.1.1.0/24` route exists locally. Re-check with `show ip bgp` on the *advertising* router first; if the prefix isn't even in its own table, the `network` line didn't take.
 - **Nothing in any table, and the neighbor isn't `Established`?** Routes can only flow over an up session. Confirm `show ip bgp summary` shows the neighbor as Established before chasing the advertisement.
-- **Session up but the summary shows `(Policy)` instead of a prefix count?** That's FRR's RFC 8212 filtering. This lab already sets `no bgp ebgp-requires-policy` under `router bgp`, which is exactly why your routes are allowed to flow; if you removed it, the eBGP routes would be filtered.
+- **Session up but the summary shows `(Policy)` instead of a prefix count?** That's FRR's RFC 8212 filtering. This lab already sets `no bgp ebgp-requires-policy` under `router bgp`, which is exactly why your routes are allowed to flow; if you removed it, the eBGP routes would be filtered. [eBGP session up but no routes?](/field-notes/bgp-ebgp-requires-policy-rfc-8212) covers RFC 8212 in depth.
 
 ## Tear down
 

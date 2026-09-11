@@ -95,7 +95,7 @@ A router seeing itself in the path *knows* the advertisement is an echo that alr
   caption={<>When an advertisement carrying AS_PATH "64502 64501 64500" arrives back at AS 64501, the router spots <strong>its own ASN</strong> already in the path and <strong>drops</strong> the route. No counting to infinity, the loop is caught instantly.</>}
 />
 
-No metric counting up to infinity, no waiting for timers: the loop is caught instantly by inspecting the path. This is why path-vector converges cleanly at internet scale.
+No metric counting up to infinity, no waiting for timers: the loop is caught instantly by inspecting the path. This is why path-vector converges cleanly at internet scale. The same rule occasionally drops a route you actually wanted, when your own ASN shows up in the path without a real loop; the field note on [AS_PATH loops and the allowas-in fix](/field-notes/bgp-as-path-loop-allowas-in) shows how to spot that in FRR and when `allowas-in` is the right answer.
 
 ## The same path drives policy
 

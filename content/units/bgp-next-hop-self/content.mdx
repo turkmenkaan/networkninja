@@ -118,6 +118,7 @@ r2# show ip route 3.3.3.3/32
 ## Troubleshooting
 
 - **Next-hop still `10.0.13.3` on r2?** The `next-hop-self` line may not have taken effect on the session yet. Re-run `clear ip bgp *` (or `clear ip bgp 2.2.2.2 soft out`) on `r1`, then re-check on `r2`.
+- **Prefix in `show ip bgp` but missing from `show ip route` for some other reason?** [BGP route in the table but not in the routing table](/field-notes/bgp-route-not-in-routing-table) walks through the usual causes in order, with the command that confirms each.
 - **Route still INVALID after the next-hop changed?** Confirm `r2` can resolve the new next-hop: `show ip route 1.1.1.1` must return an OSPF route. If it does not, check that OSPF is up (`show ip ospf neighbor`) and that both loopbacks are advertised.
 - **iBGP session not Established?** It peers on loopbacks and is sourced from `lo`. Verify OSPF has converged so `1.1.1.1` and `2.2.2.2` are mutually reachable, then `show ip bgp summary`.
 

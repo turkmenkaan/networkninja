@@ -60,7 +60,7 @@ r1# write memory
 
 Because the neighbor's AS (65002) is **different** from our own (65001), this is an **eBGP** session.
 
-> The `no bgp ebgp-requires-policy` line turns off FRR's default RFC 8212 enforcement, which otherwise refuses to exchange routes on an eBGP session that has no routing policy (you'd see `(Policy)` in `show ip bgp summary`). It keeps these fundamentals labs simple; you'll learn real policy in the Route Filtering module.
+> The `no bgp ebgp-requires-policy` line turns off FRR's default RFC 8212 enforcement, which otherwise refuses to exchange routes on an eBGP session that has no routing policy (you'd see `(Policy)` in `show ip bgp summary`). It keeps these fundamentals labs simple; you'll learn real policy in the Route Filtering module. If you ever see a session up with no routes, [eBGP session up but no routes?](/field-notes/bgp-ebgp-requires-policy-rfc-8212) explains exactly this.
 
 ## Step 3: Configure eBGP on r2
 
@@ -101,7 +101,7 @@ r1# show bgp neighbors 10.0.12.2
 
 ## Troubleshooting
 
-- **Stuck in `Active` or `Connect`?** The far end isn't configured yet, or the two ends disagree on AS numbers. The remote-as on each side must match the *other* router's actual AS.
+- **Stuck in `Active` or `Connect`?** The far end isn't configured yet, or the two ends disagree on AS numbers. The remote-as on each side must match the *other* router's actual AS. [BGP stuck in Active](/field-notes/bgp-stuck-in-active) lists the other usual causes and the command to confirm each.
 - **`Idle`?** Check the neighbor IP: you must peer with the *interface* address (`10.0.12.2`), not the loopback, in this lab.
 - **Can't even ping `10.0.12.2`?** Re-check the link in the topology and that `eth1` has its address (`show interface brief`).
 
