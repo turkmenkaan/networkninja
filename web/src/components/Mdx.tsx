@@ -24,6 +24,7 @@ import { MessageTimeline } from "./diagrams/MessageTimeline";
 import { HierarchyTree } from "./diagrams/HierarchyTree";
 import { ASPathFlow } from "./diagrams/ASPathFlow";
 import { StateMachine } from "./diagrams/StateMachine";
+import { PacketExchange } from "./diagrams/PacketExchange";
 
 const prettyCodeOptions: PrettyCodeOptions = {
   // A dark Shiki theme close to our terminal palette; CSS in globals.css
@@ -155,6 +156,7 @@ const components: MDXComponents = {
   HierarchyTree,
   ASPathFlow,
   StateMachine,
+  PacketExchange,
 };
 
 export async function Mdx({ source }: { source: string }) {
