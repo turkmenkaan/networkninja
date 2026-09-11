@@ -1,13 +1,13 @@
 # Set Up Your Lab Environment
 
-NetworkNinjas labs run on **your own machine**, not in the browser. Each lab is a handful of real routers that you boot locally and log into. To do that you need two tools installed once: **Docker** and **Containerlab**.
+NetworkNinjas labs run on **your own machine**, not in the browser. Each lab is a small network of real routers and Linux hosts that you boot locally and log into. To do that you need two tools installed once: **Docker** and **Containerlab**.
 
 This page gets you set up. It is a one-time thing: once Docker and Containerlab are working, every lab in the curriculum just runs.
 
 ## What the labs need
 
-- **Docker** the container runtime that actually runs the routers.
-- **Containerlab** the tool that wires those containers together into a network topology from a `.clab.yml` file.
+- **Docker**: the container runtime that actually runs each lab's routers and hosts.
+- **Containerlab**: the tool that wires those containers together into a network topology from a `.clab.yml` file.
 - **A Linux environment**, because Containerlab uses Linux networking under the hood.
 
 ## Pick your path by operating system
@@ -31,8 +31,8 @@ If both print version information, you are ready to go.
 
 ## A note on the first deploy
 
-The first time you run `containerlab deploy`, it downloads the router image (FRRouting), so it may take a minute. After that, the image is cached and labs boot in seconds.
+The first time you run `containerlab deploy` for a lab, it downloads that lab's container images (FRRouting for the routing labs, small Linux images for the others), so it may take a minute. After that, the images are cached and labs boot in seconds.
 
 ## What's next
 
-That's it. Head to your first lab, **`bgp-observe-a-session`**, where you'll boot a real pair of routers and read a live BGP session.
+That's it. Head back to your learning path and start its first lab. Every lab page links back here, so you can always return if you need to redo the setup.

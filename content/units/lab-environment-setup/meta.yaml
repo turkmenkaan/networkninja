@@ -2,8 +2,9 @@ id: lab-environment-setup
 type: lesson
 title: "Set Up Your Lab Environment"
 summary: "Install Docker and Containerlab so you can run the hands-on labs on your own machine."
-path: bgp-fundamentals
-module: foundations
+# No `path`/`module`: this unit is shared by every path that has labs (it is a
+# prerequisite of every lab, and LabRequirement.tsx links here from every lab
+# page). Each path manifest places it in its own first module.
 difficulty: beginner
 estimated_minutes: 10
 prerequisites: []
