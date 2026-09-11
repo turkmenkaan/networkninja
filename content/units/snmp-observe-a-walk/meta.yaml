@@ -17,10 +17,10 @@ runtime:
   images: [alpine]
   est_boot_seconds: 15
 
-# Kept `planned` to match paths/snmp-fundamentals.yaml. These two must agree:
-# the path manifest decides whether the unit is listed, but sitemap.ts keys off
-# THIS field, so a mismatch silently advertises an unlisted page to search
-# engines. Flip both together once the lab has been through a real
-# `containerlab deploy` on Linux (see the TO-CONFIRM block in topology.clab.yml).
+# Kept `planned` to match paths/snmp-fundamentals.yaml. The manifest is what
+# decides whether this unit is listed and indexed (sitemap.ts reads the manifest,
+# not this field), but keep the two in agreement anyway. Flip both together once
+# the lab has been through a real `containerlab deploy` on Linux (see the
+# TO-CONFIRM block in topology.clab.yml).
 status: planned
 version: 1

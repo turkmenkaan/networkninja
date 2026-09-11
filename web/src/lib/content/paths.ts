@@ -33,8 +33,28 @@ function readFileOrNull(p: string): string | null {
   }
 }
 
+/**
+ * findPathForUnit() resolves every unit of every manifest on each unit page, so
+ * an un-cached read is O(paths x units) per page and O(units^2) across a build.
+ * Content is immutable during a production build, so memoizing is safe there.
+ *
+ * Disabled in development on purpose: authors edit meta.yaml constantly and a
+ * process-lifetime cache would hide those edits until the dev server restarts.
+ */
+const unitMetaCache = new Map<string, UnitMeta | null>();
+const CACHE_UNIT_META = process.env.NODE_ENV === "production";
+
 /** Load and lightly normalize a unit's meta.yaml. Returns null if not built. */
 export function loadUnitMeta(id: string): UnitMeta | null {
+  if (!CACHE_UNIT_META) return readUnitMeta(id);
+  const cached = unitMetaCache.get(id);
+  if (cached !== undefined) return cached;
+  const meta = readUnitMeta(id);
+  unitMetaCache.set(id, meta);
+  return meta;
+}
+
+function readUnitMeta(id: string): UnitMeta | null {
   const metaPath = path.join(UNITS_DIR, id, "meta.yaml");
   const raw = readFileOrNull(metaPath);
   if (raw == null) return null;
