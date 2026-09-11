@@ -19,6 +19,22 @@ const nextConfig = {
       },
     ];
   },
+  // Serve one hostname. www.networkninjas.app answered 200 alongside the apex,
+  // and Search Console showed Google indexing the www copies of pages, which
+  // splits their ranking signals. A permanent (308) redirect consolidates
+  // everything on the canonical host (SITE_URL in src/lib/site.ts). It lives
+  // here, not only in the Vercel dashboard, so the rule is versioned with the
+  // code.
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.networkninjas.app" }],
+        destination: "https://networkninjas.app/:path*",
+        permanent: true,
+      },
+    ];
+  },
   skipTrailingSlashRedirect: true,
 };
 
