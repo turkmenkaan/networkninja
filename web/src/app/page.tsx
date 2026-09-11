@@ -10,7 +10,7 @@ import { AvailablePathCard, ComingSoonPathCard } from "@/components/PathCard";
 import { NotifySignup } from "@/components/NotifySignup";
 import { JsonLd } from "@/components/JsonLd";
 import { Faq } from "@/components/Faq";
-import { SITE_URL, SITE_NAME } from "@/lib/site";
+import { SITE_URL, SITE_NAME, SITE_ALTERNATE_NAMES } from "@/lib/site";
 
 const HOME_FAQ = [
   {
@@ -61,6 +61,7 @@ export default function HomePage() {
         "@type": "Organization",
         "@id": orgId,
         name: SITE_NAME,
+        alternateName: SITE_ALTERNATE_NAMES,
         url: SITE_URL,
         logo: `${SITE_URL}/icon.svg`,
         description:
@@ -71,6 +72,7 @@ export default function HomePage() {
         "@id": `${SITE_URL}/#website`,
         url: SITE_URL,
         name: SITE_NAME,
+        alternateName: SITE_ALTERNATE_NAMES,
         publisher: { "@id": orgId },
         description:
           "Learn networking the way operators actually work: read the theory, then drop into real FRR labs you run yourself with Containerlab.",

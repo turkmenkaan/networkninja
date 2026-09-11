@@ -13,3 +13,11 @@ export const SITE_URL = (
 ).replace(/\/$/, "");
 
 export const SITE_NAME = "NetworkNinjas";
+
+/**
+ * Other ways people write the brand. Search Console showed the two-word
+ * "network ninjas" query landing on page two, so the homepage WebSite and
+ * Organization structured data declare these as alternateName, which Google's
+ * site-name system reads.
+ */
+export const SITE_ALTERNATE_NAMES = ["Network Ninjas"];
