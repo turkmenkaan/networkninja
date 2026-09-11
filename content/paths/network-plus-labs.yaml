@@ -1,0 +1,101 @@
+# Path manifest - machine-readable source of truth for the Network+ Hands-On Labs path.
+# Human-readable outline lives in docs/curriculum/network-plus-labs.md.
+# Units are referenced by id; their content lives in content/units/<id>/.
+# `status` lets the app render unbuilt units as "coming soon".
+#
+# NOTE: every unit below is `planned`. None are authored yet; this manifest
+# exists so the site can advertise the path as coming soon. As units are built,
+# flip them planned -> published (parent-only), exactly as the BGP path was.
+#
+# NOTE: lab-environment-setup is already published (it is shared with the BGP
+# and SNMP paths) but is listed `planned` HERE on purpose. /paths buckets any
+# path with at least one live unit under "Available now", so marking it
+# published would pull this path out of "Coming soon" with nothing else to
+# offer. Flip it together with the first batch of labs.
+#
+# NOTE: an independent study supplement mapped to the CompTIA Network+ (N10-009)
+# objectives; not affiliated with or endorsed by CompTIA. Objective numbers live
+# in the curriculum doc, never in unit ids, so the next exam revision is a
+# remap rather than a rename.
+
+id: network-plus-labs
+title: "Network+ Hands-On Labs"
+summary: >
+  The hands-on half of Network+ prep: subnet a real network, tag frames across a
+  real 802.1Q trunk, hand out real DHCP leases, filter real traffic, then fix
+  networks that are already broken. Mapped to the CompTIA Network+ (N10-009)
+  objectives you can practice at a keyboard, and built to run alongside a video
+  course. Not affiliated with or endorsed by CompTIA.
+network_os: linux + frr
+status: planned
+
+modules:
+  - id: foundations
+    title: "Foundations: The Stack and the Toolbox"
+    units:
+      - { id: netplus-osi-and-encapsulation,             status: planned }
+      - { id: netplus-ports-protocols-and-traffic-types, status: planned }
+      - { id: netplus-troubleshooting-methodology,       status: planned }
+      - { id: lab-environment-setup,                     status: planned }
+      - { id: netplus-toolbox-tour,                      status: planned }
+      - { id: netplus-layer-by-layer-triage,             status: planned }
+
+  - id: addressing
+    title: "Addressing: IPv4, Subnetting, and IPv6"
+    units:
+      - { id: netplus-ipv4-addressing-and-subnetting,    status: planned }
+      - { id: netplus-ipv6-and-dual-stack,               status: planned }
+      - { id: netplus-build-an-addressing-plan,          status: planned }
+      - { id: netplus-broken-addressing,                 status: planned }
+      - { id: netplus-addressing-capstone,               status: planned }
+
+  - id: switching
+    title: "Switching, VLANs, and the Layer-2 Path"
+    units:
+      - { id: netplus-switching-and-mac-learning,        status: planned }
+      - { id: netplus-vlans-and-trunking,                status: planned }
+      - { id: netplus-build-vlans-and-a-trunk,           status: planned }
+      - { id: netplus-router-on-a-stick,                 status: planned }
+      - { id: netplus-broken-vlan-trunk,                 status: planned }
+      - { id: netplus-switching-capstone,                status: planned }
+
+  - id: routing-and-nat
+    title: "Routing, NAT, and Path Selection"
+    units:
+      - { id: netplus-routing-and-route-selection,       status: planned }
+      - { id: netplus-nat-pat-and-gateway-redundancy,    status: planned }
+      - { id: netplus-static-routing-and-default-route,  status: planned }
+      - { id: netplus-configure-nat-and-pat,             status: planned }
+      - { id: netplus-routing-capstone,                  status: planned }
+
+  - id: network-services
+    title: "Core Network Services: DHCP, DNS, and NTP"
+    units:
+      - { id: netplus-dhcp-and-dora,                     status: planned }
+      - { id: netplus-dns-fundamentals,                  status: planned }
+      - { id: netplus-configure-dhcp-and-dns,            status: planned }
+      - { id: netplus-broken-name-resolution,            status: planned }
+      - { id: netplus-services-capstone,                 status: planned }
+
+  - id: security
+    title: "Network Security"
+    units:
+      - { id: netplus-security-concepts-and-zones,       status: planned }
+      - { id: netplus-common-attacks,                    status: planned }
+      - { id: netplus-acls-and-segmentation,             status: planned }
+      - { id: netplus-broken-firewall-policy,            status: planned }
+
+  - id: operations
+    title: "Operations, Monitoring, and Remote Access"
+    units:
+      - { id: netplus-monitoring-and-logging,            status: planned }
+      - { id: netplus-remote-access-and-vpn,             status: planned }
+      - { id: netplus-syslog-and-snmp-monitoring,        status: planned }
+      - { id: netplus-operations-capstone,               status: planned }
+
+  - id: troubleshooting
+    title: "The Troubleshooting Gauntlet"
+    units:
+      - { id: netplus-performance-and-interface-errors,  status: planned }
+      - { id: netplus-broken-layer2-loop,                status: planned }
+      - { id: netplus-troubleshooting-gauntlet,          status: planned }

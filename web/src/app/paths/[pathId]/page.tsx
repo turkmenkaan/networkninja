@@ -21,41 +21,63 @@ import { JsonLd } from "@/components/JsonLd";
 import { Faq, type FaqItem } from "@/components/Faq";
 import { SITE_URL, SITE_NAME } from "@/lib/site";
 
+type PathFaqStats = { moduleCount: number; unitCount: number; minutes: number };
+
 /**
- * Per-path FAQ content. Keyed by path id so each path can have its own (and
- * "coming soon" paths simply have none). Answers may use live stats.
+ * Per-path FAQ content, keyed by path id. Paths without an entry render no FAQ
+ * section. Answers may use live stats, but an entry for a path that is still
+ * "coming soon" should avoid them, since its counts are zero.
  */
+const PATH_FAQS: Record<string, (stats: PathFaqStats) => FaqItem[]> = {
+  "bgp-fundamentals": ({ moduleCount, unitCount, minutes }) => [
+    {
+      q: "What do I need to run the BGP labs?",
+      a: "Docker and Containerlab. Each lab downloads as a Containerlab topology plus the FRR router configs, and deploys with a single containerlab command. The first lab links a one-time environment-setup guide.",
+    },
+    {
+      q: "Do the labs use real BGP?",
+      a: "Yes. Every lab boots genuine FRRouting routers (frrouting/frr) running production BGP, and you drive them with the same vtysh CLI used in the field, not a simulator.",
+    },
+    {
+      q: "Does this cover both eBGP and iBGP?",
+      a: "Both, in dedicated modules. The path moves from eBGP fundamentals to iBGP (full mesh, loopback peering over an IGP, next-hop-self), then path attributes and best-path selection, and finally route filtering and policy.",
+    },
+    {
+      q: "How long is the BGP Fundamentals path?",
+      a: `${moduleCount} modules covering ${unitCount} hands-on lessons and labs, roughly ${minutes} minutes of content. It is self-paced, so you can work through a module at a time.`,
+    },
+    {
+      q: "Will this help with CCNP or other certs?",
+      a: "It is hands-on BGP practice that complements cert study such as CCNP or JNCIA. It is not a certification course, but the real configuration and troubleshooting skills transfer directly to the exams and to the job.",
+    },
+  ],
+  "network-plus-labs": () => [
+    {
+      q: "Is this an official CompTIA course?",
+      a: "No. NetworkNinjas is not affiliated with or endorsed by CompTIA. These are independent hands-on labs mapped to the Network+ (N10-009) exam objectives, built to sit alongside whatever course or study guide you learn the theory from.",
+    },
+    {
+      q: "Does this cover the whole Network+ exam?",
+      a: "No, deliberately. It covers the objectives you can actually practice at a keyboard: addressing and subnetting, switching and VLANs, routing, network services like DHCP and DNS, edge security, and troubleshooting. Topics that are memorization rather than practice, such as cabling, connectors, wireless standards, and cloud service models, are better learned from a video course or book.",
+    },
+    {
+      q: "What do I need to run the labs?",
+      a: "Docker and Containerlab, the same as every NetworkNinjas lab. Each lab downloads as a Containerlab topology and deploys with a single command. A one-time setup guide walks you through installing both.",
+    },
+    {
+      q: "What is a break-fix lab?",
+      a: "A lab that boots already broken. Instead of steps to follow, you get the symptoms, then diagnose and fix the fault with the same tools you would use on the job. Troubleshooting is the largest domain on the exam, so the path is built around these.",
+    },
+  ],
+};
+
 function pathFaqItems(
   pathId: string,
   moduleCount: number,
   unitCount: number,
   minutes: number,
 ): FaqItem[] {
-  if (pathId === "bgp-fundamentals") {
-    return [
-      {
-        q: "What do I need to run the BGP labs?",
-        a: "Docker and Containerlab. Each lab downloads as a Containerlab topology plus the FRR router configs, and deploys with a single containerlab command. The first lab links a one-time environment-setup guide.",
-      },
-      {
-        q: "Do the labs use real BGP?",
-        a: "Yes. Every lab boots genuine FRRouting routers (frrouting/frr) running production BGP, and you drive them with the same vtysh CLI used in the field, not a simulator.",
-      },
-      {
-        q: "Does this cover both eBGP and iBGP?",
-        a: "Both, in dedicated modules. The path moves from eBGP fundamentals to iBGP (full mesh, loopback peering over an IGP, next-hop-self), then path attributes and best-path selection, and finally route filtering and policy.",
-      },
-      {
-        q: "How long is the BGP Fundamentals path?",
-        a: `${moduleCount} modules covering ${unitCount} hands-on lessons and labs, roughly ${minutes} minutes of content. It is self-paced, so you can work through a module at a time.`,
-      },
-      {
-        q: "Will this help with CCNP or other certs?",
-        a: "It is hands-on BGP practice that complements cert study such as CCNP or JNCIA. It is not a certification course, but the real configuration and troubleshooting skills transfer directly to the exams and to the job.",
-      },
-    ];
-  }
-  return [];
+  return PATH_FAQS[pathId]?.({ moduleCount, unitCount, minutes }) ?? [];
 }
 
 export function generateStaticParams() {
@@ -294,18 +316,39 @@ function UnitRow({ unit }: { unit: PathUnitRef }) {
   );
 }
 
+// Acronyms rendered fully uppercased when a planned unit id is prettified.
 const ACRONYMS = new Set([
+  // routing
   "BGP", "OSPF", "ISIS", "MPLS", "RPKI", "EVPN", "VXLAN", "IGP", "AS",
   "DR", "BDR", "NSSA", "LSA", "MED", "VRF", "L3VPN", "ECMP", "BFD",
+  // management
+  "SNMP", "MIB", "OID", "PDU", "NMS",
+  // core networking
+  "OSI", "TCP", "UDP", "IP", "ICMP", "ARP", "MAC", "MTU",
+  "LAN", "WAN", "VLAN", "STP", "CIDR", "VLSM",
+  "DHCP", "DNS", "NTP", "ACL", "NAT", "PAT", "VPN", "VRRP", "SSH", "TLS",
+  "DORA",
+]);
+
+// Acronyms that are not uniformly uppercase, keyed by their uppercased form.
+const MIXED_CASE_ACRONYMS = new Map([
+  ["IPV4", "IPv4"],
+  ["IPV6", "IPv6"],
+  ["QOS", "QoS"],
 ]);
 
 function prettifyId(id: string): string {
   return id
-    .replace(/^(bgp|ospf|isis|mpls|rpki)-/, "")
+    .replace(/^(bgp|ospf|isis|mpls|rpki|snmp|netplus)-/, "")
     .replace(/-/g, " ")
     .replace(/\b\w+/g, (w) => {
       const upper = w.toUpperCase();
+      const mixed = MIXED_CASE_ACRONYMS.get(upper);
+      if (mixed) return mixed;
       if (ACRONYMS.has(upper)) return upper;
+      // Pluralized acronyms: "vlans" -> "VLANs", "acls" -> "ACLs".
+      const singular = upper.slice(0, -1);
+      if (upper.endsWith("S") && ACRONYMS.has(singular)) return `${singular}s`;
       return w.charAt(0).toUpperCase() + w.slice(1);
     });
 }
