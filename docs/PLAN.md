@@ -70,7 +70,7 @@ Module: eBGP Fundamentals
   ├─ lab:     advertising-routes [guided]
   └─ lab:     ebgp-capstone   [challenge]   ← blank slate, "prove you got it"
 ```
-Soft rule: **every module needs at least one `challenge` lab to close it.**
+Soft rule: **every module needs at least one `challenge` lab to close it** (or a `broken` break-fix lab, where troubleshooting is the point).
 
 ### Unit directory schema
 
@@ -102,7 +102,7 @@ difficulty: beginner       # beginner | intermediate | advanced
 estimated_minutes: 30
 prerequisites: [bgp-what-is-an-as, bgp-tcp-179]   # other unit ids → dependency graph
 tags: [bgp, ebgp, frr]
-mode: guided               # guided | challenge   (labs only)
+mode: guided               # guided | challenge | broken   (labs only)
 runtime:                   # ignored in Tier 1, consumed in Tier 2
   nodes: 2
   est_ram_mb: 768
@@ -116,6 +116,7 @@ version: 1
 ### Lab modes
 - **`guided`** — nodes boot partially configured (base connectivity present, protocol config to complete), stepwise tasks, hints inline.
 - **`challenge`** — blank slate: nodes boot with only base addressing. Same `tasks.yaml`, pure objectives, hints collapsed/hidden. The capstone.
+- **`broken`** (break-fix): nodes boot deliberately misconfigured. The learner gets symptoms instead of steps, then diagnoses and fixes the fault. `tasks.yaml` asserts the *fixed* end state, so the grader is identical. Built for troubleshooting practice; authoring rules live in `.claude/skills/network-ninja-module-creator/SKILL.md` §3.
 - Challenge mode is the **same schema with emptier `configs/`** — the grader is identical.
 
 ### Verification model (most important part)
@@ -161,7 +162,7 @@ Lessons hold concepts; labs reference them via `prerequisites` and deep-link bac
 - **Diagrams:** reusable MDX components (`<ASTopology>`, `<MessageTimeline>`, …) in
   `web/src/components/diagrams/`. No ASCII or hand-rolled inline SVG in content.
 - **Unit types:** lessons + labs only. No quiz type (plenty exist online).
-- **Lab modes:** guided throughout + one blank-slate `challenge` capstone per module.
+- **Lab modes:** guided throughout + one blank-slate `challenge` (or `broken` break-fix) capstone per module. `broken` was added for troubleshooting practice instead of a quiz type.
 - **Images:** FRR + Nokia SR Linux.
 
 ---

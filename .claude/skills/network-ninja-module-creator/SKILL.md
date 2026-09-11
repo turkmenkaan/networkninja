@@ -53,7 +53,7 @@ A path manifest references units **by id**; ordering and unlocks are derived fro
 unit's `prerequisites`, not from position. The same unit could be reused across paths.
 
 **Module rhythm:** `theory → guided practice → blank-slate proof`. Every module that has
-labs should **close with at least one `challenge` (blank-slate) capstone**. Purely
+labs should **close with at least one `challenge` (blank-slate) or `broken` (break-fix) capstone**. Purely
 conceptual modules (like Foundations) may have no challenge lab; an observation lab is
 an acceptable closer instead.
 
@@ -126,7 +126,7 @@ version: 1
 **Lab** adds:
 ```yaml
 type: lab
-mode: guided                  # guided | challenge
+mode: guided                  # guided | challenge | broken
 runtime:                      # ignored in Tier 1; consumed by the Tier 2 runner
   nodes: 2
   est_ram_mb: 512
@@ -138,6 +138,14 @@ runtime:                      # ignored in Tier 1; consumed by the Tier 2 runner
   complete); stepwise tasks; hints shown inline.
 - **`challenge`**: blank slate, only base addressing. **Same `tasks.yaml`**, pure objectives,
   hints collapsed. It's the same schema with emptier `configs/`; the grader is identical.
+- **`broken`** (break-fix): nodes boot **deliberately misconfigured**. `configs/` carries the
+  fault(s); there are no `! TODO:` markers. `content.mdx` presents the scenario and the
+  observed **symptoms** (what the user reports, what fails), not steps. Hints stay collapsed.
+  `tasks.yaml` asserts the **fixed** end state, so the grader is unchanged. `solution/` holds
+  the corrected configs and a `solution.mdx` that walks the diagnosis (symptom -> evidence ->
+  root cause -> fix), not just the answer. Verification must prove both halves: the lab boots
+  failing with the documented symptom, and applying `solution/` makes every objective pass.
+  Built for troubleshooting modules; UI shows it as `lab · broken` with its own badge tone.
 
 ---
 
@@ -296,7 +304,8 @@ containerlab destroy -t topology.clab.yml
 - [ ] Module + units listed in `docs/curriculum/<path>.md`.
 - [ ] Each unit authored: lessons have `meta.yaml` + `content.mdx`; labs have the full set.
 - [ ] `prerequisites` chain is correct and acyclic.
-- [ ] Module closes with a `challenge` lab (or, for conceptual modules, an observation lab).
+- [ ] Module closes with a `challenge` or `broken` lab (or, for conceptual modules, an observation lab).
+- [ ] Any `broken` lab verified to boot failing *and* to pass once `solution/` is applied.
 - [ ] Manifest `content/paths/<path>.yaml` updated to `published` (by the parent, not agents).
 - [ ] New labs verified (or verification status documented in `docs/verification/`).
 - [ ] No em dash (`—`) characters anywhere in the authored content.

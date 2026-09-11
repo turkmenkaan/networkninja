@@ -8,7 +8,7 @@
  */
 
 export type UnitType = "lesson" | "lab";
-export type LabMode = "guided" | "challenge";
+export type LabMode = "guided" | "challenge" | "broken";
 export type Difficulty = "beginner" | "intermediate" | "advanced";
 export type PublishStatus = "published" | "planned" | "draft";
 

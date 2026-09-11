@@ -27,6 +27,7 @@ Units are **flat and id-keyed**, not nested under paths. A path manifest referen
 - `type: lab`: hands-on. Adds topology, configs, tasks, solution.
   - `mode: guided`: nodes boot partially configured; learner completes the task.
   - `mode: challenge`: blank slate; only base addressing. Same `tasks.yaml` grades it.
+  - `mode: broken`: boots deliberately misconfigured; the learner diagnoses from symptoms and fixes it. Same `tasks.yaml` grades the fixed state.
 
 ## Verification
 

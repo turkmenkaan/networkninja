@@ -38,10 +38,16 @@ export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
   return <Pill tone={difficultyTone[difficulty]}>{difficulty}</Pill>;
 }
 
+const labModeTone: Record<LabMode, "blade" | "sakura" | "ember"> = {
+  guided: "blade",
+  challenge: "sakura",
+  broken: "ember",
+};
+
 export function TypeBadge({ type, mode }: { type: UnitType; mode?: LabMode }) {
   if (type === "lab") {
     return (
-      <Pill tone={mode === "challenge" ? "sakura" : "blade"}>
+      <Pill tone={mode ? labModeTone[mode] : "blade"}>
         <FlaskIcon className="h-3 w-3" />
         lab{mode ? ` · ${mode}` : ""}
       </Pill>

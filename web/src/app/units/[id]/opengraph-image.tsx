@@ -15,11 +15,14 @@ export function generateStaticParams() {
 export default function Image({ params }: { params: { id: string } }) {
   const meta = loadUnitMeta(params.id);
   const title = meta?.title ?? params.id;
+  const labEyebrow: Record<string, string> = {
+    guided: "Guided lab",
+    challenge: "Challenge lab",
+    broken: "Break-fix lab",
+  };
   const eyebrow =
     meta?.type === "lab"
-      ? meta.mode === "challenge"
-        ? "Challenge lab"
-        : "Guided lab"
+      ? (meta.mode && labEyebrow[meta.mode]) || "Guided lab"
       : "Lesson";
   return renderOgImage({ eyebrow, title, subtitle: meta?.summary });
 }
